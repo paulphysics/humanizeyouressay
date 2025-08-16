@@ -7,6 +7,7 @@ from flask_admin.contrib.sqla.filters import BooleanEqualFilter, DateBetweenFilt
 from flask_wtf import FlaskForm
 from wtforms import FloatField, SubmitField, HiddenField
 from wtforms.validators import DataRequired, NumberRange
+from .forms import TransferFundsForm 
 from markupsafe import Markup
 import pytz
 from sqlalchemy import func, or_
