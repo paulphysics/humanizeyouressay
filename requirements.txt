@@ -14,3 +14,5 @@ Flask-Admin==1.6.1
 Flask-WTF==1.2.1
 pytz==2024.1
 PyPDF2
+celery
+redis
