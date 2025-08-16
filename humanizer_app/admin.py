@@ -163,24 +163,32 @@ class UserAdminView(AuthenticatedModelView):
     @expose('/transfer-funds/', methods=['GET', 'POST'])
     def transfer_funds_view(self):
         user_id = request.args.get('user_id')
-        recipient = User.query.get_or_404(user_id)
-        admin_user = User.query.get(session['user']['uid'])
-        form = TransferForm(recipient_id=user_id)
-        if form.validate_on_submit():
-            try:
-                amount = form.amount.data
-                if not recipient.wallet:
-                    flash(f"Error: User {recipient.email} has no wallet.", "error")
-                    return redirect(url_for('.index_view'))
-                recipient.wallet.balance += amount
-                db.session.add(Transaction(wallet_id=recipient.wallet.id, amount=amount, transaction_type='admin_transfer', description=f'Manual top-up by admin {admin_user.email}'))
-                db.session.commit()
-                flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
-            except Exception as ex:
-                db.session.rollback()
-                flash(f'Failed to transfer funds. Error: {ex}', 'error')
+        recipient = User.query.get(user_id)
+        if not recipient:
+            flash('Recipient user not found.', 'error')
             return redirect(url_for('.index_view'))
-        return self.render('admin/transfer_funds.html', form=form, recipient=recipient)
+    
+        form = TransferFundsForm()
+    
+        if form.validate_on_submit():
+            amount = form.amount.data
+            
+            # Since admin balance is infinite, we don't need to check it.
+            # We simply add the funds to the recipient's account.
+            
+            recipient.balance += amount
+            db.session.commit()
+            
+            flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
+            return redirect(url_for('.index_view'))
+    
+        # Pass "Infinite" as a string for display purposes
+        admin_balance_display = "Infinite"
+    
+        return self.render('admin/transfer_funds.html', 
+                           form=form, 
+                           recipient=recipient, 
+                           admin_balance=admin_balance_display)
 
 class TransactionAdminView(AuthenticatedModelView):
     column_list = ['wallet.user.email', 'amount', 'transaction_type', 'is_reversed', 'created_at', 'description']
