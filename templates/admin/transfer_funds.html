@@ -7,7 +7,7 @@
       <div class="col-md-8">
         <h1>Transfer Funds</h1>
         <hr>
-        <p>Your current balance is: <strong>KSh {{ "%.2f"|format(admin_balance) }}</strong></p>
+        <p>Your current balance is: <strong>KSh {{ admin_balance }}</strong></p>
         <p>You are about to transfer funds to:</p>
         <ul>
           <li><strong>{{ recipient.email }}</strong> (Current Balance: KSh {{ "%.2f"|format(recipient.wallet.balance) }})</li>
