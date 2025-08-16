@@ -416,21 +416,23 @@ def _handle_logged_in_humanization():
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
-                                  transaction_type='humanize_fee', description=transaction_ref))
+                                    transaction_type='humanize_fee', description=transaction_ref))
+        
         new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
-                        amount_charged=amount_to_charge, status='payment_successful', user_id=user.id,
+                        amount_charged=amount_to_charge, status='queued', user_id=user.id, # Status is now 'queued'
                         diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
         db.session.add(new_task)
         db.session.commit()
         
-        app = current_app._get_current_object()
-        from .tasks import process_humanization_in_background
-        threading.Thread(target=process_humanization_in_background, args=(app, new_task.id)).start()
+        # --- THIS IS THE ONLY PART THAT HAS CHANGED ---
+        # The old threading code has been replaced with this single line.
+        process_humanization_task.delay(new_task.id)
+        # ----------------------------------------------
         
         return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
 
     except AllModelsFailedError as e:
-        db.session.rollback() 
+        db.session.rollback()  
         flash(e.message, "danger")
         return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
     except Exception as e:
@@ -438,6 +440,7 @@ def _handle_logged_in_humanization():
         logger.error(f"An unexpected error occurred during humanization for user {user.id}: {e}", exc_info=True)
         flash("An unexpected error occurred. Please try again.", "danger")
         return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
+
 
 def _handle_anonymous_humanization():
     data = request.form
