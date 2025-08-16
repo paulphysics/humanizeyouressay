@@ -162,28 +162,32 @@ class UserAdminView(AuthenticatedModelView):
 
     @expose('/transfer-funds/', methods=['GET', 'POST'])
     def transfer_funds_view(self):
-        from .forms import TransferFundsForm
+        # 1. DELETE THIS LINE - it's not needed.
+        # from .forms import TransferFundsForm 
+        
         user_id = request.args.get('user_id')
         recipient = User.query.get(user_id)
         if not recipient:
             flash('Recipient user not found.', 'error')
             return redirect(url_for('.index_view'))
-    
-        form = TransferFundsForm()
-    
+        
+        # 2. CHANGE THE FORM NAME HERE to match the class defined in this file.
+        form = TransferForm() 
+        
         if form.validate_on_submit():
             amount = form.amount.data
             
-            # Since admin balance is infinite, we don't need to check it.
-            # We simply add the funds to the recipient's account.
-            
-            recipient.balance += amount
-            db.session.commit()
-            
-            flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
+            # This part looks incorrect, recipient doesn't have a 'balance' attribute
+            # It should probably be recipient.wallet.balance
+            if recipient.wallet:
+                recipient.wallet.balance += amount
+                db.session.commit()
+                flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
+            else:
+                flash(f'Error: User {recipient.email} does not have a wallet.', 'error')
+                
             return redirect(url_for('.index_view'))
     
-        # Pass "Infinite" as a string for display purposes
         admin_balance_display = "Infinite"
     
         return self.render('admin/transfer_funds.html', 
