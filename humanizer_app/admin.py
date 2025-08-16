@@ -7,7 +7,6 @@ from flask_admin.contrib.sqla.filters import BooleanEqualFilter, DateBetweenFilt
 from flask_wtf import FlaskForm
 from wtforms import FloatField, SubmitField, HiddenField
 from wtforms.validators import DataRequired, NumberRange
-from .forms import TransferFundsForm 
 from markupsafe import Markup
 import pytz
 from sqlalchemy import func, or_
@@ -163,6 +162,7 @@ class UserAdminView(AuthenticatedModelView):
 
     @expose('/transfer-funds/', methods=['GET', 'POST'])
     def transfer_funds_view(self):
+        from .forms import TransferFundsForm
         user_id = request.args.get('user_id')
         recipient = User.query.get(user_id)
         if not recipient:
