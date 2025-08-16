@@ -162,29 +162,44 @@ class UserAdminView(AuthenticatedModelView):
 
     @expose('/transfer-funds/', methods=['GET', 'POST'])
     def transfer_funds_view(self):
-        # 1. DELETE THIS LINE - it's not needed.
-        # from .forms import TransferFundsForm 
-        
+        form = TransferForm()
         user_id = request.args.get('user_id')
         recipient = User.query.get(user_id)
         if not recipient:
             flash('Recipient user not found.', 'error')
             return redirect(url_for('.index_view'))
-        
-        # 2. CHANGE THE FORM NAME HERE to match the class defined in this file.
-        form = TransferForm() 
-        
+    
         if form.validate_on_submit():
             amount = form.amount.data
             
-            # This part looks incorrect, recipient doesn't have a 'balance' attribute
-            # It should probably be recipient.wallet.balance
-            if recipient.wallet:
+            # --- Start of New Logic ---
+            try:
+                if not recipient.wallet:
+                    flash(f'Error: User {recipient.email} does not have a wallet.', 'error')
+                    return redirect(url_for('.index_view'))
+    
+                # 1. Update the user's wallet balance
                 recipient.wallet.balance += amount
+    
+                # 2. Create a new transaction record for the credit
+                admin_credit_transaction = Transaction(
+                    wallet_id=recipient.wallet.id,
+                    amount=amount,
+                    transaction_type='admin_credit',  # New transaction type
+                    description=f'Admin credit by {session["user"]["email"]}.',
+                    is_reversed=False
+                )
+                db.session.add(admin_credit_transaction)
+    
+                # 3. Commit both changes to the database at once
                 db.session.commit()
+                
                 flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
-            else:
-                flash(f'Error: User {recipient.email} does not have a wallet.', 'error')
+    
+            except Exception as e:
+                db.session.rollback()
+                flash(f'An error occurred: {e}', 'error')
+            # --- End of New Logic ---
                 
             return redirect(url_for('.index_view'))
     
