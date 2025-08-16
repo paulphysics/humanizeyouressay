@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>✨Humanize AI Text</title>
+    {% include '_head.html' %}
+    <script>
+        window.FLASK_WORDS_PER_UNIT = {{ WORDS_PER_UNIT | tojson }};
+        window.FLASK_PRICE_PER_UNIT = {{ PRICE_PER_UNIT | tojson }};
+        window.FLASK_ESSAY_PRICE_PER_UNIT = {{ ESSAY_PRICE_PER_UNIT | tojson }};
+    </script>
+    <script>
+        window.firebaseConfig = {{ firebase_config | tojson }};
+    </script>
+</head>
+<body class="flex flex-col items-center min-h-screen px-4 bg-gray-50">
+
+    {% include '_header.html' %}
+
+    <div id="js-alert-container" class="flash-message rounded-lg shadow-md hidden">
+        <span id="js-alert-message"></span>
+    </div>
+
+    <div class="max-w-7xl mx-auto card p-8 w-full">
+        <h1 class="text-2xl font-bold text-center text-gray-500 mb-6">✨Humanize AI Text</h1>
+        <p class="text-sm text-center text-gray-600 mb-8">
+            Bypass advanced AI detection tools with text that sounds completely natural. Transparent and affordable pricing from just KSh {{ PRICE_PER_UNIT }} per {{ WORDS_PER_UNIT }} words. 
+            Sign up for better deals (Ksh 39 per page) and access to more features, for example, ChatGPT 5!
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mb-4">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% include '_humanizer_form.html' %}
+
+    </div>
+    
+    {% include '_modals.html' %}
+    {% include '_footer.html' %}
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/login-auth.js') }}"></script>
+</body>
+</html>

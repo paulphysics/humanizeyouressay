@@ -1,0 +1,47 @@
+<!-- templates/_modals.html -->
+
+<!-- Modal for anonymous M-Pesa payment (used on home.html) -->
+<div id="paymentModal" class="modal hidden">
+    <div class="modal-content">
+        <span id="closeMpesaModalBtn" class="close-button">×</span>
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">
+            <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa Logo" class="mx-auto h-20 mb-4">
+            Confirm Payment
+        </h2>
+        <p class="text-center text-gray-600 mb-4">You are about to humanize <span id="modal_word_count_display">0</span> words for KSh <span id="modal_estimated_cost_display">0</span>.</p>
+        <div class="space-y-4">
+            <div>
+                <label for="phone_number_modal" class="block text-lg font-medium text-gray-700 mb-2">Phone Number (M-Pesa):</label>
+                <input type="tel" id="phone_number_modal" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm" placeholder="e.g., 0712345678" required>
+            </div>
+        </div>
+        <button type="button" id="submitPaymentBtn" class="btn w-full bg-green-600 hover:bg-green-700 mt-6">
+            Submit Payment
+        </button>
+    </div>
+</div>
+
+<!-- Modal for topping up wallet (used on logged-in pages) -->
+<div id="topUpModal" class="modal hidden">
+    <div class="modal-content">
+        <span id="closeTopUpModalBtn" class="close-button">×</span>
+        <h2 class="text-xl font-bold text-center text-gray-800 mb-4">
+            <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa Logo" class="mx-auto h-20 mb-4">
+            Top Up Your Wallet
+        </h2>
+        <p class="text-center text-gray-600 mb-3 text-sm">You are about to top up your wallet via M-Pesa.</p>
+        <div class="space-y-3">
+            <div>
+                <label for="top_up_amount" class="block text-base font-medium text-gray-700 mb-1">Amount (KSh):</label>
+                <input type="number" id="top_up_amount" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm" placeholder="e.g., 500" required>
+            </div>
+            <div>
+                <label for="phone_number_top_up" class="block text-base font-medium text-gray-700 mb-1">Phone Number (M-Pesa):</label>
+                <input type="tel" id="phone_number_top_up" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm" placeholder="e.g., 0712345678" required>
+            </div>
+        </div>
+        <button type="button" id="submitTopUpBtn" class="btn w-full bg-green-600 hover:bg-green-700 mt-4 text-sm">
+            Top Up
+        </button>
+    </div>
+</div>

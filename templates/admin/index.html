@@ -1,0 +1,29 @@
+{% extends 'admin/master.html' %}
+
+{% block body %}
+  {{ super() }}
+
+  <div class="container">
+    <div class="row">
+      <div class="col-sm-12">
+        <h1>Welcome, Admin!</h1>
+        <p class="lead">This is your custom admin dashboard.</p>
+        <hr>
+        
+        <h3>Quick Stats</h3>
+        <p>Here you can add some quick statistics or information about your application.</p>
+        <ul>
+          <li><strong>Total Users:</strong> {{ user_count }}</li>
+          <li><strong>Total Tasks:</strong> {{ task_count }}</li>
+        </ul>
+        <hr>
+
+        <h3>Quick Links</h3>
+        <p>
+          <a class="btn btn-primary" href="{{ url_for('user.index_view') }}">Manage Users</a>
+          <a class="btn btn-primary" href="{{ url_for('task.index_view') }}">View Tasks</a>
+        </p>
+      </div>
+    </div>
+  </div>
+{% endblock body %}

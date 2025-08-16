@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Transaction History</title>
+    {% include '_head.html' %}
+</head>
+<body class="flex flex-col items-center min-h-screen px-4 bg-gray-50">
+
+    {% include '_header.html' %}
+
+    <div class="max-w-4xl mx-auto card p-8 w-full">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">💳 Transaction History</h1>
+        <p class="text-center text-gray-600 mb-8">A complete record of all your account activity.</p>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full bg-white">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                        <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Transaction ID</th>
+                        <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                        <th class="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount (KSh)</th>
+                        <th class="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance (KSh)</th>
+                        <th class="py-3 px-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Output</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-700">
+                    {% for transaction in transactions %}
+                    <tr class="border-b border-gray-200">
+                        <td class="py-3 px-4">{{ transaction.created_at_local_str }}</td>
+                        <td class="py-3 px-4 font-mono text-sm">
+                            {{ transaction.display_title }}
+                        </td>
+                        <td class="py-3 px-4">
+                            {{ transaction.transaction_type.replace('_', ' ')|title }}
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <span class="font-semibold {% if transaction.amount > 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ "%.2f"|format(transaction.amount) }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right font-semibold">{{ "%.2f"|format(transaction.balance_after) }}</td>
+                        <td class="py-3 px-4 text-center">
+                            {% if transaction.task and transaction.task.output_url %}
+                                <a href="{{ transaction.task.output_url }}" class="text-indigo-600 hover:text-indigo-900 font-semibold">
+                                    {{ transaction.task.output_type|title }}
+                                </a>
+                            {% else %}
+                                <span class="text-gray-400">N/A</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4">You have no transaction history yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-6 flex justify-between items-center">
+            <a href="{{ url_for('main.transaction_history', page=pagination.prev_num) if pagination.has_prev else '#' }}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 {% if not pagination.has_prev %} opacity-50 cursor-not-allowed {% endif %}">
+                Previous
+            </a>
+            <div class="text-sm text-gray-700">
+                Page {{ pagination.page }} of {{ pagination.pages }}.
+            </div>
+            <a href="{{ url_for('main.transaction_history', page=pagination.next_num) if pagination.has_next else '#' }}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 {% if not pagination.has_next %} opacity-50 cursor-not-allowed {% endif %}">
+                Next
+            </a>
+        </div>
+    </div>
+
+    {% include '_modals.html' %}
+    {% include '_footer.html' %}
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

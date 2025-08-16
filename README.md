@@ -1,0 +1,1 @@
+This is a simple Flask web application that humanizes AI-generated content. The goal is to introduce variety and a more natural, human-like flow to text that might otherwise sound repetitive or robotic.
