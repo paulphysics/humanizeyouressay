@@ -12,7 +12,7 @@ from flask import Flask
 from firebase_admin import credentials
 from .extensions import db, migrate
 from datetime import datetime, timedelta
-from .celery import celery_init_app  # <-- 1. Import the factory
+from .celery import celery_init_app
 
 # Initialize Firebase Admin SDK (before any other Firebase operations)
 if not firebase_admin._apps:
@@ -39,7 +39,6 @@ def create_app():
     dotenv.load_dotenv()
 
     # --- Model configuration ---
-    # ... (Your existing MODELS and DEFAULT_MODEL_KEY config remains here)
     MODELS = {
         "gpt-5": {
             "api_id": "gpt-5-2025-08-07",
@@ -57,9 +56,7 @@ def create_app():
     app.config["DEFAULT_MODEL_KEY"] = DEFAULT_MODEL_KEY
     app.config['DEFAULT_MODEL'] = os.environ.get('DEFAULT_MODEL', DEFAULT_MODEL_KEY)
 
-
     # --- Flask Security Config ---
-    # ... (Your existing security config remains here)
     app.config['SECRET_KEY'] = os.getenv(
         "FLASK_SECRET_KEY",
         "a-very-secure-secret-key-that-you-should-change"
@@ -70,9 +67,7 @@ def create_app():
     app.config['SESSION_REFRESH_EACH_REQUEST'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-
     # --- Database Config ---
-    # ... (Your existing database config remains here)
     database_url = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     if database_url and database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -80,13 +75,19 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # --- Celery Configuration ---
+    redis_url = os.environ.get("REDIS_URL")
     app.config.from_mapping(
         CELERY=dict(
-            broker_url=os.environ.get("REDIS_URL"),
-            result_backend=os.environ.get("REDIS_URL"),
+            broker_url=redis_url,
+            result_backend=redis_url,
             task_ignore_result=True,
+            broker_connection_retry_on_startup=True # Added for resilience
         ),
     )
+    # Add SSL options if using a secure Redis URL (like on Heroku)
+    if redis_url and redis_url.startswith("rediss://"):
+        app.config["CELERY"]["broker_use_ssl"] = {"ssl_cert_reqs": "CERT_NONE"}
+        app.config["CELERY"]["redis_backend_use_ssl"] = {"ssl_cert_reqs": "CERT_NONE"}
     # ----------------------------
 
     # --- Upload Limits ---
@@ -98,7 +99,7 @@ def create_app():
     # --- Initialize Extensions ---
     db.init_app(app)
     migrate.init_app(app, db)
-    celery_init_app(app)  # <-- 2. Initialize Celery
+    celery_init_app(app)
 
     @app.context_processor
     def inject_now():
