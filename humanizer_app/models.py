@@ -34,8 +34,12 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     external_reference = db.Column(db.String(120), unique=True, nullable=False, index=True)
     input_text = db.Column(db.Text, nullable=False)
-    phone_number = db.Column(db.String(20), nullable=False)
-    amount_charged = db.Column(db.Float, nullable=False)
+    
+    # --- THIS IS THE CHANGE ---
+    phone_number = db.Column(db.String(20), nullable=True)
+    amount_charged = db.Column(db.Float, nullable=True)
+    # --------------------------
+    
     status = db.Column(db.String(50), nullable=False, default='payment_initiated')
     humanized_output = db.Column(db.Text, nullable=True)
     output_word_count = db.Column(db.Integer, nullable=True)
