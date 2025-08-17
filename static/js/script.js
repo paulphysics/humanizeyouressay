@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //== SHARED LOGIC
     //======================================================================
     function initializeSharedComponents() {
+        // ... (This entire section is unchanged)
         const DOMElements = {
             topUpBtn: document.getElementById('topUpBtn'),
             mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
@@ -93,12 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+
     //======================================================================
     //== PLAYGROUND LOGIC
     //======================================================================
     function initializePlayground() {
         let currentConversationId = null;
-        let currentResponseId = null;
         let alertTimeout = null;
         const ALERT_DURATION = 5000;
         let isFetchingHistory = false;
@@ -137,81 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebarOverlay.classList.add('sidebar-overlay');
         document.body.appendChild(sidebarOverlay);
 
-        function markdownToHtml(text) {
-            const codeBlocks = [];
-            text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-                const language = lang || 'plaintext';
-                const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const blockHtml = `<pre><code class="language-${language}">${escapedCode.trim()}</code></pre>`;
-                codeBlocks.push(blockHtml);
-                return `%%CODEBLOCK_${codeBlocks.length - 1}%%`;
-            });
-
-            text = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
-            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
-            text = text.replace(/^\s*[\-\*]\s+(.*)/gm, '<li>$1</li>').replace(/<\/li>\n<li>/g, '</li><li>');
-            text = text.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-
-            text = text.replace(/%%CODEBLOCK_(\d+)%%/g, (match, index) => {
-                return codeBlocks[parseInt(index, 10)];
-            });
-
-            const parts = text.split(/(<pre>[\s\S]*?<\/pre>|<ul>[\s\S]*?<\/ul>)/);
-            for (let i = 0; i < parts.length; i++) {
-                if (i % 2 === 0) {
-                    parts[i] = parts[i].trim().replace(/\n/g, '<br>');
-                }
-            }
-            return parts.join('');
-        }
-        
-        const highlightCodeBlocks = () => {
-            if (typeof hljs === 'undefined') {
-                console.warn('highlight.js not loaded, skipping syntax highlighting.');
-                return;
-            }
-            document.querySelectorAll('#chat-log pre code').forEach((block) => {
-                if (!block.hasAttribute('data-highlighted')) {
-                    hljs.highlightElement(block);
-                    block.setAttribute('data-highlighted', 'true');
-                    const pre = block.parentElement;
-                    if (pre && !pre.querySelector('.code-copy-btn')) {
-                        const copyBtn = document.createElement('button');
-                        copyBtn.className = 'code-copy-btn';
-                        const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
-                        const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-                        copyBtn.innerHTML = clipboardIcon;
-                        copyBtn.onclick = () => {
-                            navigator.clipboard.writeText(block.innerText);
-                            copyBtn.innerHTML = checkIcon;
-                            setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
-                        };
-                        pre.appendChild(copyBtn);
-                    }
-                }
-            });
-        };
-
-        function animateTyping(plainText, finalHtml, textElement, cursorElement, callback) {
-            const speed = 10;
-            let currentIndex = 0;
-            textElement.innerHTML = '';
-            cursorElement.style.display = 'inline-block';
-            const intervalId = setInterval(() => {
-                if (currentIndex < plainText.length) {
-                    textElement.innerHTML = markdownToHtml(plainText.substring(0, currentIndex + 1));
-                    currentIndex++;
-                    if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-                } else {
-                    clearInterval(intervalId);
-                    textElement.innerHTML = finalHtml;
-                    cursorElement.style.display = 'none';
-                    if (callback) callback();
-                }
-            }, speed);
-        }
-
         const showAlert = (message, type = 'info') => {
             if (alertTimeout) clearTimeout(alertTimeout);
             const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
@@ -235,6 +161,134 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // --- NEW STREAMING-COMPATIBLE handleGenerate FUNCTION ---
+        const handleGenerate = async () => {
+            if (!DOMElements.promptInput) return;
+            const prompt = DOMElements.promptInput.value.trim();
+            if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
+
+            if (!currentConversationId && DOMElements.modelSelectionBar) {
+                DOMElements.modelSelectionBar.style.display = 'none';
+            }
+
+            if (!isChatActive) {
+                isChatActive = true;
+                if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
+                if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
+            }
+
+            // 1. Construct user message and display it
+            let userInputPayload = [{ "type": "input_text", "text": prompt }];
+            let displayMessage = prompt;
+
+            attachedFiles.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    userInputPayload.push({ "type": "input_image", "image_url": { "url": file.data } });
+                } else {
+                    userInputPayload.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
+                }
+            });
+
+            if (attachedFiles.length > 0) {
+                displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
+            }
+            addMessageToLog('user', displayMessage);
+            
+            DOMElements.promptInput.value = '';
+            showProcessing(true);
+            attachedFiles = [];
+            renderAttachedFiles();
+
+            // 2. Create the AI's message bubble in preparation for the stream
+            const botMessageContainer = document.createElement('div');
+            botMessageContainer.className = 'message-container bot-message-container';
+            const botMessageBubble = document.createElement('div');
+            botMessageBubble.className = 'message-bubble bot-message';
+            const botMessageContent = document.createElement('div');
+            const typingCursor = document.createElement('span');
+            typingCursor.className = 'typing-cursor';
+            typingCursor.style.display = 'inline-block';
+
+            botMessageBubble.appendChild(botMessageContent);
+            botMessageBubble.appendChild(typingCursor);
+            botMessageContainer.appendChild(botMessageBubble);
+            DOMElements.chatLog.appendChild(botMessageContainer);
+            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+            
+            try {
+                if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
+                const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
+                if (!selectedModel) throw new Error('Please select a model.');
+
+                // 3. Initiate the streaming fetch request
+                const response = await fetch('/playground_chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        input: userInputPayload,
+                        conversation_id: currentConversationId,
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'An unknown network error occurred.');
+                }
+
+                // 4. Process the stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullResponse += chunk;
+
+                    // Use marked.parse to safely convert markdown to HTML and render it
+                    botMessageContent.innerHTML = marked.parse(fullResponse);
+                    
+                    DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+                }
+                
+                // 5. Finalize the message after the stream ends
+                typingCursor.style.display = 'none'; // Hide cursor
+                // Re-run highlight.js on the final content
+                botMessageContent.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+                
+                // Refresh history to get the new conversation if it was created
+                if (!currentConversationId) {
+                    await fetchConversations();
+                }
+
+            } catch (error) {
+                botMessageContent.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+                typingCursor.style.display = 'none';
+            } finally {
+                showProcessing(false);
+                DOMElements.promptInput.focus();
+            }
+        };
+
+        // --- Other Playground Functions (unchanged, but simplified addMessageToLog) ---
+
+        const addMessageToLog = (sender, message) => {
+            if (typeof message !== 'string' || !DOMElements.chatLog) return;
+            const messageContainer = document.createElement('div');
+            messageContainer.className = 'message-container user-message-container';
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble user-message';
+            messageBubble.textContent = message; // User messages are always simple text
+            messageContainer.appendChild(messageBubble);
+            DOMElements.chatLog.appendChild(messageContainer);
+            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+        };
+        
         const renderAttachedFiles = () => {
             if (!DOMElements.attachmentPreviewContainer) return;
             DOMElements.attachmentPreviewContainer.innerHTML = '';
@@ -304,63 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAttachedFiles();
         };
 
-        const addMessageToLog = (sender, message) => {
-            if (typeof message !== 'string' || !DOMElements.chatLog) return;
-            const isUser = sender === 'user';
-            const messageContainer = document.createElement('div');
-            messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
-            const messageBubble = document.createElement('div');
-            messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-            const hasCodeBlock = message.includes('```');
-
-            if (isUser) {
-                messageBubble.textContent = message;
-            } else if (hasCodeBlock) {
-                messageBubble.innerHTML = markdownToHtml(message);
-                showProcessing(false);
-            } else {
-                const finalHtml = markdownToHtml(message);
-                const messageTextSpan = document.createElement('span');
-                const cursorSpan = document.createElement('span');
-                cursorSpan.className = 'typing-cursor';
-                messageBubble.append(messageTextSpan, cursorSpan);
-                animateTyping(message, finalHtml, messageTextSpan, cursorSpan, () => {
-                    highlightCodeBlocks();
-                    showProcessing(false);
-                });
-            }
-            messageContainer.appendChild(messageBubble);
-
-            if (!isUser) {
-                const actionsContainer = document.createElement('div');
-                actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
-                const copyBtn = document.createElement('button');
-                copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-                copyBtn.title = 'Copy';
-                const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
-                const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-                copyBtn.innerHTML = clipboardIcon;
-                copyBtn.onclick = () => {
-                    navigator.clipboard.writeText(message);
-                    copyBtn.innerHTML = checkIcon;
-                    setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
-                };
-                const humanizeBtn = document.createElement('button');
-                humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-                humanizeBtn.title = 'Humanize';
-                humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
-                humanizeBtn.onclick = () => {
-                    localStorage.setItem('textToHumanize', message);
-                    window.location.href = '/humanizer';
-                };
-                actionsContainer.append(copyBtn, humanizeBtn);
-                messageContainer.appendChild(actionsContainer);
-            }
-            DOMElements.chatLog.appendChild(messageContainer);
-            highlightCodeBlocks();
-            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-        };
-        
         const loadConversation = async (convId) => {
             try {
                 const response = await fetch(`/conversation/${convId}`);
@@ -368,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const messages = await response.json();
                 if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
                 currentConversationId = convId;
-                currentResponseId = null;
                 if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
 
                 messages.forEach(msg => {
@@ -390,13 +386,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             msgBubble.textContent = content;
                         }
                     } else {
-                        msgBubble.innerHTML = markdownToHtml(content);
+                        msgBubble.innerHTML = marked.parse(content);
                     }
                     msgContainer.appendChild(msgBubble);
                     if (DOMElements.chatLog) DOMElements.chatLog.appendChild(msgContainer);
                 });
 
-                highlightCodeBlocks();
+                DOMElements.chatLog.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+
                 if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
                 if (!isChatActive) {
                     isChatActive = true;
@@ -472,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.conversationList.appendChild(convItem);
             });
         };
-
+        
         const fetchConversations = async (query = '', page = 1) => {
             if (isFetchingHistory) return;
             isFetchingHistory = true;
@@ -493,101 +492,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const startNewChat = () => {
             currentConversationId = null;
-            currentResponseId = null;
             attachedFiles = [];
             renderAttachedFiles();
             if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
-            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.');
+            
+            const botMessageContainer = document.createElement('div');
+            botMessageContainer.className = 'message-container bot-message-container';
+            const botMessageBubble = document.createElement('div');
+            botMessageBubble.className = 'message-bubble bot-message';
+            botMessageBubble.innerHTML = marked.parse('Hello! How can I assist you today? Select a model and ask me anything.');
+            botMessageContainer.appendChild(botMessageBubble);
+            DOMElements.chatLog.appendChild(botMessageContainer);
+
             isChatActive = false;
             if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
             if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.remove('chat-active');
             if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
             document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
         };
-
-        const handleGenerate = async () => {
-            if (!DOMElements.promptInput) return;
-            const prompt = DOMElements.promptInput.value.trim();
-            if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
-            
-            const hasCodeBlockInPrompt = DOMElements.promptInput.value.includes('```');
-
-            if (!currentConversationId && DOMElements.modelSelectionBar) {
-                DOMElements.modelSelectionBar.style.display = 'none';
-            }
-
-            if (!isChatActive) {
-                isChatActive = true;
-                if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
-                if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
-            }
-            
-            let userInput = [{ "type": "input_text", "text": prompt }];
-            let displayMessage = prompt;
-
-            attachedFiles.forEach(file => {
-                if (file.type.startsWith('image/')) {
-                    userInput.push({ "type": "input_image", "image_url": { "url": file.data } });
-                } else {
-                    userInput.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
-                }
-            });
-
-            if (attachedFiles.length > 0) {
-                 displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
-            }
-
-            addMessageToLog('user', displayMessage);
-            DOMElements.promptInput.value = '';
-            showProcessing(true);
-            attachedFiles = [];
-            renderAttachedFiles();
-
-            try {
-                if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
-                const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
-                if (!selectedModel) throw new Error('Please select a model.');
-                
-                const response = await fetch('/playground_chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        input: userInput,
-                        conversation_id: currentConversationId,
-                        previous_response_id: currentResponseId
-                    })
-                });
-                
-                if (!response.headers.get("content-type")?.includes("application/json")) {
-                    const errorText = await response.text();
-                    throw new Error(`Server returned an unexpected response: ${errorText.substring(0, 100)}`);
-                }
-
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'An unknown error occurred.');
-                
-                addMessageToLog('bot', data.response);
-                
-                currentResponseId = data.response_id;
-                if (data.conversation_id && !currentConversationId) {
-                    currentConversationId = data.conversation_id;
-                    await fetchConversations();
-                    document.querySelector(`[data-conv-id='${currentConversationId}']`)?.classList.add('bg-gray-200');
-                }
-            } catch (error) {
-                addMessageToLog('bot', `Error: ${error.message}`);
-                showProcessing(false);
-            } finally {
-                if (hasCodeBlockInPrompt) {
-                     showProcessing(false);
-                }
-                DOMElements.promptInput.focus();
-            }
-        };
-
+        
         const setupModelSelector = async () => {
             if (!DOMElements.modelSelector) {
                 console.warn("Model selector element not found.");
@@ -624,7 +549,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // ** HARDENED EVENT LISTENERS **
         if (DOMElements.generateBtn) DOMElements.generateBtn.addEventListener('click', handleGenerate);
         if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
         if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
@@ -670,6 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //== HUMANIZER LOGIC
     //======================================================================
     function initializeHumanizer() {
+        // ... (This entire section is unchanged)
         const AppState = {
             isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
             pollingInterval: null,
