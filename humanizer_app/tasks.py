@@ -95,8 +95,7 @@ def process_humanization_task(task_id: int):
 @shared_task(bind=True)
 def process_playground_chat_task(self, task_id: int):
     """
-    Celery task to process a playground chat message in the background,
-    now using the modern OpenAI Responses API.
+    Celery task to process a playground chat message in the background.
     """
     task = Task.query.get(task_id)
     if not task:
@@ -116,29 +115,32 @@ def process_playground_chat_task(self, task_id: int):
         models_config = current_app.config.get('MODELS', {})
         model_info = models_config.get(model_key)
 
-        # --- Modern API input format ---
-        api_input = [
-            {
-                "role": "user",
-                "content": user_input_parts  # structured parts (text, image, etc.)
-            }
-        ]
-
-        response = openai_client.responses.create(
-            model=model_info['api_id'],
-            input=api_input,
+        # --- Re-add base instructions using a system message ---
+        model_name = model_info.get('label', "AI Assistant")
+        system_instructions = (
+            "You are a helpful assistant. All code you provide must be enclosed in triple backticks. "
+            f"If a user asks for your name, you must respond that you are based on '{model_name}'."
         )
 
-        # Extract text safely
-        output_text = ""
-        if response.output and len(response.output) > 0:
-            first_output = response.output[0]
-            if first_output.content and len(first_output.content) > 0:
-                output_text = first_output.content[0].text or ""
+        # The API expects a simple string for content, not a list of objects.
+        simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
+
+        # The API expects a list of message objects, each with a role and content.
+        api_input = [
+            {"role": "system", "content": system_instructions},
+            {"role": "user", "content": simple_user_input}
+        ]
+        
+        # --- Using the standard Chat Completions API ---
+        response = openai_client.chat.completions.create(
+            model=model_info['api_id'],
+            messages=api_input,
+        )
+        output_text = response.choices[0].message.content or ""
 
         # --- BILLING & DATABASE LOGIC ---
         price_per_word = model_info['price_per_word']
-        input_word_count = count_words(" ".join(p.get("text", "") for p in user_input_parts))
+        input_word_count = count_words(simple_user_input)
         output_word_count = count_words(output_text)
         total_word_count = input_word_count + output_word_count
         total_cost = total_word_count * price_per_word
@@ -152,18 +154,14 @@ def process_playground_chat_task(self, task_id: int):
         else:
             title = "New Chat"
             try:
-                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {output_text or '...' }"
+                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {simple_user_input}"
                 title_model = models_config.get('gpt-4o') or model_info
-                title_resp = openai_client.responses.create(
+                title_resp = openai_client.chat.completions.create(
                     model=title_model['api_id'],
-                    input=[{"role": "user", "content": [{"type": "text", "text": title_prompt}]}],
+                    messages=[{"role": "user", "content": title_prompt}],
                 )
-                title_text = ""
-                if title_resp.output and len(title_resp.output) > 0:
-                    if title_resp.output[0].content and len(title_resp.output[0].content) > 0:
-                        title_text = (title_resp.output[0].content[0].text or "").strip().strip('"')
-                if title_text:
-                    title = title_text
+                title_text = (title_resp.choices[0].message.content or "").strip().strip('"')
+                if title_text: title = title_text
             except Exception as te:
                 logger.warning(f"Title generation failed: {te}")
             
@@ -177,7 +175,6 @@ def process_playground_chat_task(self, task_id: int):
             transaction_type='playground_fee',
             description=f"CONV-{conversation.id}: {total_word_count} words"
         ))
-
         db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
         db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
