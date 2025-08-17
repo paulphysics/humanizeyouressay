@@ -74,21 +74,21 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # --- Celery Configuration ---
-    redis_url = os.environ.get("REDIS_URL")
+    # --- Celery Configuration (with SSL fix) ---
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url and redis_url.startswith("rediss://"):
+        # This is the key change: append the SSL setting directly to the URL
+        redis_url += "?ssl_cert_reqs=CERT_NONE"
+    
     app.config.from_mapping(
         CELERY=dict(
             broker_url=redis_url,
             result_backend=redis_url,
             task_ignore_result=True,
-            broker_connection_retry_on_startup=True # Added for resilience
+            broker_connection_retry_on_startup=True
         ),
     )
-    # Add SSL options if using a secure Redis URL (like on Heroku)
-    if redis_url and redis_url.startswith("rediss://"):
-        app.config["CELERY"]["broker_use_ssl"] = {"ssl_cert_reqs": "CERT_NONE"}
-        app.config["CELERY"]["redis_backend_use_ssl"] = {"ssl_cert_reqs": "CERT_NONE"}
-    # ----------------------------
+    # ----------------------------------------
 
     # --- Upload Limits ---
     app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
