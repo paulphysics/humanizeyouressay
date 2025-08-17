@@ -90,3 +90,98 @@ def process_humanization_task(task_id: int):
     finally:
         # Commit all changes (status updates, refunds, etc.) at the very end
         db.session.commit()
+
+@shared_task(ignore_result=True)
+def process_playground_chat_task(task_id: int):
+    """
+    Celery task to process a playground chat message in the background.
+    """
+    task = Task.query.get(task_id)
+    if not task:
+        logger.error(f"[Playground Task ID: {task_id}] Task not found.")
+        return
+
+    try:
+        logger.info(f"[Playground Task ID: {task.id}] Processing playground task.")
+        task.status = 'processing'
+        db.session.commit()
+
+        # Extract necessary data from the task's diff_data
+        user_input_parts = task.diff_data.get('user_input_parts', [])
+        model_key = task.diff_data.get('model_key')
+        conversation_id = task.diff_data.get('conversation_id')
+        
+        user = task.user
+        models_config = current_app.config.get('MODELS', {})
+        model_info = models_config.get(model_key)
+
+        # --- AI LOGIC (Moved from routes.py) ---
+        base_instructions = "You are a helpful assistant. All code you provide must be enclosed in triple backticks."
+        model_name = model_info.get('label', "AI Assistant")
+        base_instructions += f" If a user asks for your name, you must respond that you are based on '{model_name}'."
+
+        api_input = [{"role": "user", "content": user_input_parts}]
+        
+        response = openai_client.responses.create(
+            model=model_info['api_id'],
+            instructions=base_instructions,
+            input=api_input
+        )
+        output_text = getattr(response, "output_text", "") or ""
+        # --- END AI LOGIC ---
+
+        # --- BILLING & DATABASE LOGIC (Moved from routes.py) ---
+        price_per_word = model_info['price_per_word']
+        input_text_for_billing = " ".join(part.get("text", "") for part in user_input_parts if part.get("type") == "input_text")
+        input_word_count = count_words(input_text_for_billing)
+        output_word_count = count_words(output_text)
+        total_word_count = input_word_count + output_word_count
+        total_cost = total_word_count * price_per_word
+
+        if not user.wallet or user.wallet.balance < total_cost:
+            raise Exception("Insufficient funds detected during task execution.")
+
+        conversation = None
+        if conversation_id:
+            conversation = Conversation.query.get(conversation_id)
+        else:
+            # Title generation logic
+            title = "New Chat"
+            try:
+                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {input_text_for_billing}"
+                title_model = models_config.get('gpt-4o') or model_info
+                title_resp = openai_client.responses.create(
+                    model=title_model['api_id'],
+                    instructions="You write concise chat titles. Return title only, no quotes.",
+                    input=[{"role": "user", "content": [{"type": "input_text", "text": title_prompt}]}]
+                )
+                title_text = (getattr(title_resp, "output_text", "") or "").strip().strip('"')
+                if title_text: title = title_text
+            except Exception as te:
+                logger.warning(f"Title generation failed: {te}")
+            
+            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
+            db.session.add(conversation)
+            db.session.flush()
+
+        user.wallet.balance -= total_cost
+        db.session.add(Transaction(
+            wallet_id=user.wallet.id, amount=-total_cost,
+            transaction_type='playground_fee',
+            description=f"CONV-{conversation.id}: {total_word_count} words"
+        ))
+        db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
+        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
+
+        # Update the original task with the result
+        task.humanized_output = output_text # Using this field to store the result
+        task.status = 'humanization_complete' # Reusing status for completion
+        task.diff_data['final_conversation_id'] = conversation.id # Store the final conv id
+
+    except Exception as e:
+        logger.error(f"Playground task {task.id} failed: {e}", exc_info=True)
+        task.status = 'humanization_failed'
+        task.error_message = "An error occurred while communicating with the AI model."
+
+    finally:
+        db.session.commit()
