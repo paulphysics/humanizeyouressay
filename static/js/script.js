@@ -161,43 +161,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        const highlightCodeInElement = (element) => {
-            element.querySelectorAll('pre code').forEach((block) => {
-                if (!block.hasAttribute('data-highlighted')) {
-                    hljs.highlightElement(block);
-                    block.setAttribute('data-highlighted', 'true');
-                }
-            });
-        };
-
-        const addMessageToLog = (sender, content) => {
-            if (!DOMElements.chatLog) return;
-            const isUser = sender === 'user';
-            const messageContainer = document.createElement('div');
-            messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
-            const messageBubble = document.createElement('div');
-            messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-
-            if (isUser) {
-                messageBubble.textContent = content;
-            } else {
-                // For bot, 'content' is the placeholder element
-                messageBubble.appendChild(content);
-            }
-            
-            messageContainer.appendChild(messageBubble);
-            DOMElements.chatLog.appendChild(messageContainer);
-            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-            return messageBubble;
-        };
-
-        const pollForTaskResult = (taskId, messageBubble) => {
+        const pollForTaskResult = (taskId, messageContainer) => {
             let attempts = 0;
             pollingInterval = setInterval(async () => {
                 attempts++;
-                if (attempts > 60) { // 3-minute timeout
+                if (attempts > 60) { // 3-minute timeout for polling
                     clearInterval(pollingInterval);
-                    messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
+                    messageContainer.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
                     showProcessing(false);
                     return;
                 }
@@ -205,18 +175,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const response = await fetch(`/get_playground_task_status/${taskId}`);
                     if (!response.ok) {
-                        // Stop on server errors, but continue on 404 for a few tries
                         if (response.status !== 404 || attempts > 5) {
                            throw new Error("Failed to get task status.");
                         }
-                        return; // Continue polling if it's a temporary 404
+                        return; // Continue polling on temporary 404
                     }
 
                     const data = await response.json();
+
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
-                        messageBubble.innerHTML = marked.parse(data.response);
-                        highlightCodeInElement(messageBubble);
+                        renderBotMessage(messageContainer, data.response); // Use the new rendering function
                         if (!currentConversationId && data.conversation_id) {
                             currentConversationId = data.conversation_id;
                             await fetchConversations();
@@ -224,14 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         showProcessing(false);
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
-                        messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
+                        messageContainer.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
                         showProcessing(false);
                     }
-                    // If status is 'processing', do nothing and wait for the next poll.
+                    // If 'processing', do nothing and wait for the next poll.
 
                 } catch (error) {
                     clearInterval(pollingInterval);
-                    messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+                    messageContainer.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                     showProcessing(false);
                 }
             }, 3000); // Poll every 3 seconds
@@ -256,11 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
             let displayMessage = prompt;
 
             attachedFiles.forEach(file => {
-                const type = file.type.startsWith('image/') ? 'input_image' : 'input_text';
-                const content = type === 'input_image' ? { "url": file.data } : `\n\n--- Document: ${file.name} ---\n${file.data}`;
-                userInputPayload.push({ type, [type === 'input_image' ? 'image_url' : 'text']: content });
+                if (file.type.startsWith('image/')) {
+                    userInputPayload.push({ "type": "input_image", "image_url": { "url": file.data } });
+                } else {
+                    userInputPayload.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
+                }
             });
-            
+
             if (attachedFiles.length > 0) {
                 displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
             }
@@ -271,12 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
             attachedFiles = [];
             renderAttachedFiles();
             
-            // Create a placeholder for the bot's response
-            const botResponsePlaceholder = document.createElement('div');
-            botResponsePlaceholder.className = "flex items-center gap-x-2";
-            botResponsePlaceholder.innerHTML = `<div class="spinner !w-5 !h-5"></div><span>Thinking...</span>`;
-            const messageBubble = addMessageToLog('bot', botResponsePlaceholder);
-
+            const botMessageContainer = addMessageToLog('bot', `<div class="flex items-center gap-x-2"><div class="spinner !w-5 !h-5"></div><span>Thinking...</span></div>`);
+            
             try {
                 if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
                 const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
@@ -296,17 +263,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error(data.error || 'Failed to start the task.');
 
                 if (data.status === 'processing_started' && data.task_id) {
-                    pollForTaskResult(data.task_id, messageBubble);
+                    pollForTaskResult(data.task_id, botMessageContainer);
                 } else {
                     throw new Error("Invalid response from server.");
                 }
 
             } catch (error) {
-                messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+                botMessageContainer.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                 showProcessing(false);
             }
         };
 
+        const renderBotMessage = (messageContainer, messageText) => {
+            messageContainer.innerHTML = marked.parse(messageText);
+
+            // Re-run highlight.js on the final content
+            messageContainer.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+            
+            // Add the action buttons (Copy and Humanize)
+            const actionsContainer = document.createElement('div');
+            actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            copyBtn.title = 'Copy';
+            const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
+            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+            copyBtn.innerHTML = clipboardIcon;
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(messageText);
+                copyBtn.innerHTML = checkIcon;
+                setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
+            };
+            const humanizeBtn = document.createElement('button');
+            humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            humanizeBtn.title = 'Humanize';
+            humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
+            humanizeBtn.onclick = () => {
+                localStorage.setItem('textToHumanize', messageText);
+                window.location.href = '/humanizer';
+            };
+            actionsContainer.append(copyBtn, humanizeBtn);
+            messageContainer.parentElement.appendChild(actionsContainer);
+        };
+
+        const addMessageToLog = (sender, content) => {
+            if (!DOMElements.chatLog) return;
+            const isUser = sender === 'user';
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            if (typeof content === 'string') {
+                messageBubble.innerHTML = content;
+            } else {
+                messageBubble.appendChild(content);
+            }
+            
+            messageContainer.appendChild(messageBubble);
+            DOMElements.chatLog.appendChild(messageContainer);
+            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+            return messageBubble;
+        };
+        
+        // ... (All other playground functions like loadConversation, deleteConversation, etc. are unchanged)
+        
         const renderAttachedFiles = () => {
             if (!DOMElements.attachmentPreviewContainer) return;
             DOMElements.attachmentPreviewContainer.innerHTML = '';
@@ -391,27 +414,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         try { content = JSON.parse(msg.content); } catch (e) { /* Not JSON */ }
                     }
                     const isUser = msg.role === 'user';
-                    const msgContainer = document.createElement('div');
-                    msgContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
-                    const msgBubble = document.createElement('div');
-                    msgBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-                    if (isUser) {
-                        if (Array.isArray(content)) {
+                    
+                    if(isUser) {
+                        let displayContent = "";
+                         if (Array.isArray(content)) {
                             const textParts = content.filter(part => part.type === 'input_text').map(part => part.text).join(' ');
                             const hasAttachments = content.some(part => part.type !== 'input_text');
-                            msgBubble.textContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
+                            displayContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
                         } else {
-                            msgBubble.textContent = content;
+                            displayContent = content;
                         }
+                        addMessageToLog('user', displayContent);
                     } else {
-                        msgBubble.innerHTML = marked.parse(content);
+                        const botMessageContainer = addMessageToLog('bot', '');
+                        renderBotMessage(botMessageContainer, content);
                     }
-                    msgContainer.appendChild(msgBubble);
-                    if (DOMElements.chatLog) DOMElements.chatLog.appendChild(msgContainer);
                 });
                 
-                highlightCodeInElement(DOMElements.chatLog);
-
                 if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
                 if (!isChatActive) {
                     isChatActive = true;
@@ -507,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const startNewChat = () => {
+            clearInterval(pollingInterval); // Stop any polling from previous chats
             currentConversationId = null;
             attachedFiles = [];
             renderAttachedFiles();
@@ -514,13 +534,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
             
-            const botMessageContainer = document.createElement('div');
-            botMessageContainer.className = 'message-container bot-message-container';
-            const botMessageBubble = document.createElement('div');
-            botMessageBubble.className = 'message-bubble bot-message';
-            botMessageBubble.innerHTML = marked.parse('Hello! How can I assist you today? Select a model and ask me anything.');
-            botMessageContainer.appendChild(botMessageBubble);
-            DOMElements.chatLog.appendChild(botMessageContainer);
+            const botMessageContainer = addMessageToLog('bot', '');
+            renderBotMessage(botMessageContainer, 'Hello! How can I assist you today? Select a model and ask me anything.');
 
             isChatActive = false;
             if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
@@ -610,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //== HUMANIZER LOGIC
     //======================================================================
     function initializeHumanizer() {
-        // ... (This entire section is unchanged)
+        // ... (This entire section is unchanged and remains fully functional)
         const AppState = {
             isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
             pollingInterval: null,
