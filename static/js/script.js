@@ -94,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     //======================================================================
     //== PLAYGROUND LOGIC
     //======================================================================
@@ -138,6 +137,27 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebarOverlay.classList.add('sidebar-overlay');
         document.body.appendChild(sidebarOverlay);
 
+        function markdownToHtml(text) {
+             if (typeof marked !== 'undefined') {
+                return marked.parse(text);
+            }
+            console.warn("marked.js not loaded. Using fallback markdown renderer.");
+            return text.replace(/\n/g, '<br>');
+        }
+        
+        const highlightCodeBlocks = (container) => {
+            if (typeof hljs === 'undefined') {
+                console.warn('highlight.js not loaded, skipping syntax highlighting.');
+                return;
+            }
+            container.querySelectorAll('pre code').forEach((block) => {
+                if (!block.hasAttribute('data-highlighted')) {
+                    hljs.highlightElement(block);
+                    block.setAttribute('data-highlighted', 'true');
+                }
+            });
+        };
+
         const showAlert = (message, type = 'info') => {
             if (alertTimeout) clearTimeout(alertTimeout);
             const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
@@ -150,7 +170,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const showProcessing = (isProcessing) => {
-            // This function is now simplified as the spinner is inside the message bubble
             if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
         };
         
@@ -160,8 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 sidebarOverlay.classList.toggle('show');
             }
         };
-
-        const pollForTaskResult = (taskId, messageBubble) => {
+        
+        const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
             let attempts = 0;
             pollingInterval = setInterval(async () => {
                 attempts++;
@@ -171,20 +190,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     showProcessing(false);
                     return;
                 }
-
                 try {
                     const response = await fetch(`/get_playground_task_status/${taskId}`);
                     if (!response.ok) {
                         if (response.status !== 404 || attempts > 5) {
-                           throw new Error("Failed to get task status from server.");
+                           throw new Error("Failed to get task status.");
                         }
                         return; // Continue polling on temporary 404
                     }
-
                     const data = await response.json();
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
-                        renderBotMessage(messageBubble, data.response, true); // Render final message with buttons
+                        messageBubble.innerHTML = markdownToHtml(data.response);
+                        highlightCodeBlocks(messageBubble);
+                        addMessageActions(messageContainer, data.response); // Add buttons back
                         if (!currentConversationId && data.conversation_id) {
                             currentConversationId = data.conversation_id;
                             await fetchConversations();
@@ -195,34 +214,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
                         showProcessing(false);
                     }
-                    // If 'processing', do nothing, wait for the next poll.
-
                 } catch (error) {
                     clearInterval(pollingInterval);
                     messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                     showProcessing(false);
                 }
-            }, 3000); // Poll every 3 seconds
+            }, 3000);
         };
         
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
             const prompt = DOMElements.promptInput.value.trim();
             if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
-
             if (!currentConversationId && DOMElements.modelSelectionBar) {
                 DOMElements.modelSelectionBar.style.display = 'none';
             }
-
             if (!isChatActive) {
                 isChatActive = true;
                 if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
                 if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
             }
-
             let userInputPayload = [{ "type": "input_text", "text": prompt }];
             let displayMessage = prompt;
-
             attachedFiles.forEach(file => {
                 if (file.type.startsWith('image/')) {
                     userInputPayload.push({ "type": "input_image", "image_url": { "url": file.data } });
@@ -230,25 +243,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     userInputPayload.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
                 }
             });
-
             if (attachedFiles.length > 0) {
                 displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
             }
             addMessageToLog('user', displayMessage);
-            
             DOMElements.promptInput.value = '';
             showProcessing(true);
             attachedFiles = [];
             renderAttachedFiles();
-            
             const thinkingPlaceholder = `<div class="flex items-center gap-x-2"><div class="spinner !w-5 !h-5"></div><span>Thinking...</span></div>`;
-            const messageBubble = addMessageToLog('bot', thinkingPlaceholder, false); // Render without buttons initially
-
+            const { messageContainer, messageBubble } = addMessageToLog('bot', thinkingPlaceholder, false);
             try {
                 if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
                 const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
                 if (!selectedModel) throw new Error('Please select a model.');
-
                 const response = await fetch('/playground_chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -258,56 +266,109 @@ document.addEventListener('DOMContentLoaded', () => {
                         conversation_id: currentConversationId,
                     })
                 });
-                
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
-
                 if (data.status === 'processing_started' && data.task_id) {
-                    pollForTaskResult(data.task_id, messageBubble);
+                    pollForTaskResult(data.task_id, messageContainer, messageBubble);
                 } else {
                     throw new Error("Invalid response from server when starting task.");
                 }
-
             } catch (error) {
                 messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                 showProcessing(false);
             }
         };
 
-        const renderBotMessage = (messageBubble, messageText, addActions = false) => {
-            messageBubble.innerHTML = marked.parse(messageText);
-
-            messageBubble.querySelectorAll('pre code').forEach((block) => {
-                hljs.highlightElement(block);
+        const renderAttachedFiles = () => {
+            if (!DOMElements.attachmentPreviewContainer) return;
+            DOMElements.attachmentPreviewContainer.innerHTML = '';
+            if (attachedFiles.length === 0) return;
+            attachedFiles.forEach((file, index) => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'bg-gray-100 p-2 rounded-lg flex items-center justify-between text-sm';
+                let previewContent = `<span class="text-gray-700 truncate">${file.name}</span>`;
+                if (file.type.startsWith('image/')) {
+                    previewContent = `<img src="${file.data}" class="w-8 h-8 rounded-md object-cover mr-2">` + previewContent;
+                }
+                fileElement.innerHTML = `<div class="flex items-center gap-x-2">${previewContent}</div><button data-index="${index}" class="remove-attachment-btn p-1 rounded-full text-gray-500 hover:bg-gray-300"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
+                DOMElements.attachmentPreviewContainer.appendChild(fileElement);
             });
-            
-            if (addActions) {
-                const actionsContainer = document.createElement('div');
-                actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
-                const copyBtn = document.createElement('button');
-                copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-                copyBtn.title = 'Copy';
-                const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
-                const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-                copyBtn.innerHTML = clipboardIcon;
-                copyBtn.onclick = () => {
-                    navigator.clipboard.writeText(messageText);
-                    copyBtn.innerHTML = checkIcon;
-                    setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
-                };
-                const humanizeBtn = document.createElement('button');
-                humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-                humanizeBtn.title = 'Humanize';
-                humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
-                humanizeBtn.onclick = () => {
-                    localStorage.setItem('textToHumanize', messageText);
-                    window.location.href = '/humanizer';
-                };
-                actionsContainer.append(copyBtn, humanizeBtn);
-                messageBubble.parentElement.appendChild(actionsContainer);
+            document.querySelectorAll('.remove-attachment-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const indexToRemove = parseInt(e.currentTarget.dataset.index, 10);
+                    attachedFiles.splice(indexToRemove, 1);
+                    renderAttachedFiles();
+                });
+            });
+        };
+        
+        const handleFiles = async (files) => {
+            const fileList = Array.from(files);
+            let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
+            for (const file of fileList) {
+                totalSize += file.size;
+                if (totalSize > MAX_TOTAL_SIZE) {
+                    showAlert(`Total file size cannot exceed 10MB.`, 'danger');
+                    return;
+                }
             }
+            showAlert('Processing attachments...', 'info');
+            for (const file of fileList) {
+                const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                const allowedTextFiles = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                let fileData = { name: file.name, type: file.type, size: file.size, data: null };
+                if (allowedImageTypes.includes(file.type)) {
+                    fileData.data = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (event) => resolve(event.target.result);
+                        reader.readAsDataURL(file);
+                    });
+                    attachedFiles.push(fileData);
+                } else if (allowedTextFiles.includes(file.type) || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx')) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                        const response = await fetch('/extract_text_from_file', { method: 'POST', body: formData });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error);
+                        fileData.data = data.text;
+                        attachedFiles.push(fileData);
+                    } catch (error) {
+                        showAlert(`Failed to process ${file.name}: ${error.message}`, 'danger');
+                    }
+                } else {
+                    showAlert(`Unsupported file type: ${file.name}`, 'danger');
+                }
+            }
+            renderAttachedFiles();
         };
 
+        const addMessageActions = (messageContainer, messageText) => {
+            const actionsContainer = document.createElement('div');
+            actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            copyBtn.title = 'Copy';
+            const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
+            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+            copyBtn.innerHTML = clipboardIcon;
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(messageText);
+                copyBtn.innerHTML = checkIcon;
+                setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
+            };
+            const humanizeBtn = document.createElement('button');
+            humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            humanizeBtn.title = 'Humanize';
+            humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
+            humanizeBtn.onclick = () => {
+                localStorage.setItem('textToHumanize', messageText);
+                window.location.href = '/humanizer';
+            };
+            actionsContainer.append(copyBtn, humanizeBtn);
+            messageContainer.appendChild(actionsContainer);
+        };
+        
         const addMessageToLog = (sender, content, addActions = false) => {
             if (!DOMElements.chatLog) return;
             const isUser = sender === 'user';
@@ -316,14 +377,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageBubble = document.createElement('div');
             messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
             
-            messageBubble.innerHTML = content;
-            
+            messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
             messageContainer.appendChild(messageBubble);
+
+            if (!isUser && addActions) {
+                addMessageActions(messageContainer, content);
+            }
+            
             DOMElements.chatLog.appendChild(messageContainer);
+            highlightCodeBlocks(messageContainer);
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-            return messageBubble; // Return the bubble itself for modification (e.g., polling)
+            return { messageContainer, messageBubble };
         };
-        
+
         const loadConversation = async (convId) => {
             try {
                 const response = await fetch(`/conversation/${convId}`);
@@ -332,7 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
                 currentConversationId = convId;
                 if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
-
                 messages.forEach(msg => {
                     let content = msg.content;
                     if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -349,11 +414,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         addMessageToLog('user', displayContent);
                     } else {
-                        const botMessageBubble = addMessageToLog('bot', '');
-                        renderBotMessage(botMessageBubble, content, true); // Past messages get buttons
+                        addMessageToLog('bot', content, true);
                     }
                 });
-                
                 if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
                 if (!isChatActive) {
                     isChatActive = true;
@@ -457,8 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
             
-            const botMessageBubble = addMessageToLog('bot', '');
-            renderBotMessage(botMessageBubble, 'Hello! How can I assist you today? Select a model and ask me anything.', false); // No buttons for greeting
+            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false); // No buttons for greeting
 
             isChatActive = false;
             if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
