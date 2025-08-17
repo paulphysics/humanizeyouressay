@@ -175,145 +175,70 @@ def transaction_history():
 def playground_chat():
     user = User.query.get_or_404(session['user']['uid'])
     data = request.get_json()
-
     if not data:
-        return jsonify({"error": "Invalid request. Expecting JSON."}), 400
+        return jsonify({"error": "Invalid request."}), 400
 
     try:
-        models_config = current_app.config.get('MODELS', {})
-        default_model_key = current_app.config.get('DEFAULT_MODEL_KEY', 'gpt-5')
+        # Create a Task record to track this job
+        task_ref = f"PLAYGROUND-{uuid.uuid4()}"
+        
+        # We store all the necessary info for the background task in `diff_data`
+        task_data = {
+            'user_input_parts': data.get('input', []),
+            'model_key': data.get('model'),
+            'conversation_id': data.get('conversation_id')
+        }
 
-        user_input_parts = data.get('input', [])
-        conversation_id = data.get('conversation_id')
-        previous_response_id = data.get('previous_response_id')
-
-        conversation = None
-        if conversation_id:
-            conversation = Conversation.query.filter_by(
-                id=conversation_id, user_id=user.id
-            ).first()
-            if not conversation:
-                return jsonify({"error": "Conversation not found."}), 404
-            model_key = conversation.model_key
-        else:
-            model_key = data.get('model', default_model_key)
-
-        model_info = models_config.get(model_key)
-        if not model_info:
-            return jsonify({"error": f"Invalid model key: {model_key}"}), 400
-
-         # --- ** FIX STARTS HERE ** ---
-        # Base instructions for the AI
-        base_instructions = "You are a helpful assistant. All code you provide must be enclosed in triple backticks."
-
-        # Add a specific instruction about the model's name based on the selection
-        if model_key == 'gpt-5':
-            model_name = "ChatGPT 5"
-        elif model_key == 'gpt-4o':
-            model_name = "ChatGPT 4o"
-        else:
-            model_name = "AI Assistant" # A sensible default
-
-        base_instructions += f" If a user asks for your name, you must respond that you are based on '{model_name}'."
-        # --- ** FIX ENDS HERE ** ---
-      
-        api_input = [{"role": "user", "content": user_input_parts}]
-        has_image = any(part.get("type") == "input_image" for part in user_input_parts)
-
-        def create_response_for(model, *, input_payload, instructions):
-            kwargs = {
-                "model": model['api_id'],
-                "instructions": instructions,
-                "input": input_payload,
-                "previous_response_id": previous_response_id,
-            }
-            if not model['api_id'].startswith("gpt-5"):
-                kwargs["temperature"] = 0.7
-            return openai_client.responses.create(**kwargs)
-
-        model_to_use = model_info
-        if has_image:
-            try:
-                logger.info(f"Image detected. Using primary model: {model_to_use['api_id']}")
-                response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-            except Exception as e:
-                logger.warning(f"Primary model ({model_to_use['api_id']}) failed: {e}. Fallback to GPT-4o.")
-                fallback_model = models_config.get('gpt-4o')
-                if not fallback_model:
-                    return jsonify({"error": "Fallback model not configured."}), 500
-                model_to_use = fallback_model
-                response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-        else:
-            logger.info(f"Using model: {model_to_use['api_id']} for playground chat")
-            response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-
-        # ... (rest of the function remains the same)
-        output_text = getattr(response, "output_text", "") or ""
-        new_response_id = getattr(response, "id", None)
-
-        price_per_word = model_to_use['price_per_word']
-        input_text_for_billing = " ".join(
-            part.get("text", "") for part in user_input_parts if part.get("type") == "input_text"
+        new_task = Task(
+            user_id=user.id,
+            external_reference=task_ref,
+            status='queued',
+            diff_data=task_data,
+            input_text="Playground Chat" # Placeholder
         )
-
-        input_word_count = count_words(input_text_for_billing)
-        output_word_count = count_words(output_text)
-        total_word_count = input_word_count + output_word_count
-        total_cost = total_word_count * price_per_word
-
-        if not user.wallet or user.wallet.balance < total_cost:
-            return jsonify({"error": "Insufficient funds."}), 402
-
-        if not conversation:
-            title = "New Chat"
-            try:
-                title_prompt = (
-                    f"Create a short title (4-5 words max) for this chat:\n\nUser: {input_text_for_billing}"
-                )
-                title_model = models_config.get('gpt-4o') or model_to_use
-                title_kwargs = {
-                    "model": title_model['api_id'],
-                    "instructions": "You write concise chat titles. Return title only, no quotes.",
-                    "input": [{"role": "user", "content": [{"type": "input_text", "text": title_prompt}]}],
-                }
-                if not title_model['api_id'].startswith("gpt-5"):
-                    title_kwargs["temperature"] = 0.2
-
-                title_resp = openai_client.responses.create(**title_kwargs)
-                title_text = (getattr(title_resp, "output_text", "") or "").strip()
-                if title_text:
-                    title = title_text.strip('"')
-            except Exception as te:
-                logger.warning(f"Title generation failed, using default. Err: {te}")
-
-            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
-            db.session.add(conversation)
-            db.session.flush()
-
-        db.session.add(Transaction(
-            wallet_id=user.wallet.id, amount=-total_cost,
-            transaction_type='playground_fee',
-            description=f"CONV-{conversation.id}: {total_word_count} words"
-        ))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
-
-        user.wallet.balance -= total_cost
+        db.session.add(new_task)
         db.session.commit()
 
+        # Dispatch the Celery task
+        process_playground_chat_task.delay(new_task.id)
+
+        # Immediately return the task ID to the client
         return jsonify({
-            "status": "complete",
-            "response": output_text,
-            "conversation_id": conversation.id,
-            "response_id": new_response_id,
-            "wallet_balance": user.wallet.balance
+            "status": "processing_started",
+            "task_id": new_task.id 
         })
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Playground chat error for user {user.id}: {e}", exc_info=True)
-        return jsonify({"error": "An error occurred while communicating with the AI model."}), 500
+        logger.error(f"Playground chat submission error for user {user.id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to start the chat task."}), 500
 
+
+# --- ADD this new function to the end of routes.py ---
+@main_bp.route("/get_playground_task_status/<int:task_id>", methods=['GET'])
+@auth_required
+def get_playground_task_status(task_id):
+    task = Task.query.get_or_404(task_id)
+
+    # Security check: ensure the user owns this task
+    if task.user_id != session['user']['uid']:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    if task.status == 'humanization_complete':
+        # On completion, send back the final response and conversation ID
+        return jsonify({
+            "status": "complete",
+            "response": task.humanized_output,
+            "conversation_id": task.diff_data.get('final_conversation_id')
+        })
+    elif task.status == 'humanization_failed':
+        return jsonify({
+            "status": "failed",
+            "error": task.error_message
+        })
+    else:
+        # Otherwise, just report that it's still processing
+        return jsonify({"status": "processing"})
 
 @main_bp.route("/humanizer", methods=['GET'])
 @auth_required
