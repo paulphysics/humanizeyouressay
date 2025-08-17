@@ -26,7 +26,7 @@ from .humanizer_service.exceptions import AllModelsFailedError
 from .auth_routes import auth_required
 from .humanizer_service.api_clients import call_single_openai_model
 from .humanizer_service.api_clients import openai_client
-from .tasks import process_humanization_task
+from .tasks import process_playground_chat_task, process_humanization_task
 
 main_bp = Blueprint('main', __name__)
 KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
