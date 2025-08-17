@@ -149,18 +149,49 @@ document.addEventListener('DOMContentLoaded', () => {
                .replace(/\n/g, '<br>');
        }
        
-       const highlightCodeBlocks = () => {
+        const highlightCodeBlocks = () => {
            if (typeof hljs === 'undefined') {
                console.warn('highlight.js not loaded, skipping syntax highlighting.');
                return;
            }
-           document.querySelectorAll('#chat-log pre code').forEach((block) => {
+       
+           document.querySelectorAll('#chat-log pre').forEach((preElement) => {
+               const block = preElement.querySelector('code');
+               if (!block) return;
+       
+               // Highlight the code block if it hasn't been already
                if (!block.hasAttribute('data-highlighted')) {
                    hljs.highlightElement(block);
                    block.setAttribute('data-highlighted', 'true');
                }
+       
+               // Add a copy button if one doesn't already exist
+               if (!preElement.querySelector('.code-copy-btn')) {
+                   const copyBtn = document.createElement('button');
+                   copyBtn.className = 'code-copy-btn';
+                   copyBtn.title = 'Copy code';
+       
+                   const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
+                   const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+       
+                   copyBtn.innerHTML = clipboardIcon;
+       
+                   copyBtn.addEventListener('click', () => {
+                       navigator.clipboard.writeText(block.innerText).then(() => {
+                           copyBtn.innerHTML = checkIcon;
+                           setTimeout(() => {
+                               copyBtn.innerHTML = clipboardIcon;
+                           }, 2000);
+                       }).catch(err => {
+                           console.error('Failed to copy text: ', err);
+                       });
+                   });
+       
+                   // Add the button to the top of the <pre> block
+                   preElement.prepend(copyBtn);
+               }
            });
-       };
+        };
 
         const showAlert = (message, type = 'info') => {
             if (alertTimeout) clearTimeout(alertTimeout);
