@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //== SHARED LOGIC
     //======================================================================
     function initializeSharedComponents() {
-        // ... (This entire section is unchanged)
         const DOMElements = {
             topUpBtn: document.getElementById('topUpBtn'),
             mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
@@ -138,25 +137,30 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(sidebarOverlay);
 
         function markdownToHtml(text) {
-             if (typeof marked !== 'undefined') {
-                return marked.parse(text);
-            }
-            console.warn("marked.js not loaded. Using fallback markdown renderer.");
-            return text.replace(/\n/g, '<br>');
-        }
-        
-        const highlightCodeBlocks = (container) => {
-            if (typeof hljs === 'undefined') {
-                console.warn('highlight.js not loaded, skipping syntax highlighting.');
-                return;
-            }
-            container.querySelectorAll('pre code').forEach((block) => {
-                if (!block.hasAttribute('data-highlighted')) {
-                    hljs.highlightElement(block);
-                    block.setAttribute('data-highlighted', 'true');
-                }
-            });
-        };
+            if (typeof marked !== 'undefined') {
+               return marked.parse(text);
+           }
+           console.warn("marked.js not loaded. Using fallback markdown renderer.");
+           return text
+               .replace(/</g, "&lt;").replace(/>/g, "&gt;")
+               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+               .replace(/\*(.*?)\*/g, '<em>$1</em>')
+               .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+               .replace(/\n/g, '<br>');
+       }
+       
+       const highlightCodeBlocks = () => {
+           if (typeof hljs === 'undefined') {
+               console.warn('highlight.js not loaded, skipping syntax highlighting.');
+               return;
+           }
+           document.querySelectorAll('#chat-log pre code').forEach((block) => {
+               if (!block.hasAttribute('data-highlighted')) {
+                   hljs.highlightElement(block);
+                   block.setAttribute('data-highlighted', 'true');
+               }
+           });
+       };
 
         const showAlert = (message, type = 'info') => {
             if (alertTimeout) clearTimeout(alertTimeout);
@@ -179,12 +183,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 sidebarOverlay.classList.toggle('show');
             }
         };
-        
+
         const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
             let attempts = 0;
             pollingInterval = setInterval(async () => {
                 attempts++;
-                if (attempts > 60) { // 3-minute timeout
+                if (attempts > 60) {
                     clearInterval(pollingInterval);
                     messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
                     showProcessing(false);
@@ -194,16 +198,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const response = await fetch(`/get_playground_task_status/${taskId}`);
                     if (!response.ok) {
                         if (response.status !== 404 || attempts > 5) {
-                           throw new Error("Failed to get task status.");
+                           throw new Error("Failed to get task status from server.");
                         }
-                        return; // Continue polling on temporary 404
+                        return;
                     }
                     const data = await response.json();
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
                         messageBubble.innerHTML = markdownToHtml(data.response);
-                        highlightCodeBlocks(messageBubble);
-                        addMessageActions(messageContainer, data.response); // Add buttons back
+                        highlightCodeBlocks();
+                        addMessageActions(messageContainer, data.response);
                         if (!currentConversationId && data.conversation_id) {
                             currentConversationId = data.conversation_id;
                             await fetchConversations();
@@ -385,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             DOMElements.chatLog.appendChild(messageContainer);
-            highlightCodeBlocks(messageContainer);
+            highlightCodeBlocks();
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
             return { messageContainer, messageBubble };
         };
@@ -918,4 +922,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-});
+})
