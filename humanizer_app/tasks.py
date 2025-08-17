@@ -25,6 +25,7 @@ def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
+    # This task seems correct, no changes needed here.
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Task ID: {task_id}] Task not found in background job.")
@@ -32,8 +33,6 @@ def process_humanization_task(task_id: int):
 
     try:
         logger.info(f"[Task ID: {task.id}] Processing task: {task.external_reference}")
-
-        # Set status to 'humanizing' so the user sees progress
         task.status = 'humanizing'
         db.session.commit()
 
@@ -47,15 +46,13 @@ def process_humanization_task(task_id: int):
         task.humanized_output = humanized_output
         task.output_word_count = word_count
         task.diff_data = updated_diff_data
-        task.status = 'humanization_complete'  # Set final status
+        task.status = 'humanization_complete'
 
-        # Handle partial refunds for failed words
         if failed_word_count > 0:
             user = task.user
             if user and user.wallet:
                 price = ESSAY_PRICE_PER_UNIT if task.diff_data.get("humanizer_mode") == 'essay' else PRICE_PER_UNIT
                 refund_amount = round((failed_word_count / WORDS_PER_UNIT) * price, 2)
-
                 if refund_amount > 0:
                     user.wallet.balance += refund_amount
                     db.session.add(Transaction(
@@ -64,7 +61,6 @@ def process_humanization_task(task_id: int):
                         transaction_type='refund',
                         description=f'Partial refund for task {task.external_reference}'
                     ))
-
                     humanized_word_count = total_paragraph_word_count - failed_word_count
                     task.diff_data['refund_info'] = f"{humanized_word_count}/{total_paragraph_word_count} words were humanized. KSh {refund_amount:.2f} has been refunded to your wallet."
                     logger.info(f"Refunded KSh {refund_amount} to user {user.id} for {failed_word_count} failed words.")
@@ -74,7 +70,6 @@ def process_humanization_task(task_id: int):
     except (AllModelsFailedError, CustomApiError) as e:
         logger.error(f"Critical failure for task {task.id}. Issuing full refund. Error: {e.message}", exc_info=True)
         task.status = 'humanization_failed'
-
         user = task.user
         if user and user.wallet:
             refund_amount = task.amount_charged
@@ -92,17 +87,16 @@ def process_humanization_task(task_id: int):
         logger.error(f"Background processing for task {task.id} failed with an unexpected error: {e}", exc_info=True)
         task.status = 'humanization_failed'
         task.error_message = "An unexpected error occurred. Our team has been notified."
-
+    
     finally:
-        # Commit all changes (status updates, refunds, etc.) at the very end
         db.session.commit()
 
 
 @shared_task(bind=True)
 def process_playground_chat_task(self, task_id: int):
     """
-    Celery task to process a playground chat message in the background.
-    This task will return a result.
+    Celery task to process a playground chat message in the background,
+    now using the modern OpenAI Responses API.
     """
     task = Task.query.get(task_id)
     if not task:
@@ -114,33 +108,37 @@ def process_playground_chat_task(self, task_id: int):
         task.status = 'processing'
         db.session.commit()
 
-        # Extract necessary data from the task's diff_data
         user_input_parts = task.diff_data.get('user_input_parts', [])
         model_key = task.diff_data.get('model_key')
         conversation_id = task.diff_data.get('conversation_id')
-
+        
         user = task.user
         models_config = current_app.config.get('MODELS', {})
         model_info = models_config.get(model_key)
 
-        # --- AI LOGIC ---
-        base_instructions = "You are a helpful assistant. All code you provide must be enclosed in triple backticks."
-        model_name = model_info.get('label', "AI Assistant")
-        base_instructions += f" If a user asks for your name, you must respond that you are based on '{model_name}'."
+        # --- Modern API input format ---
+        api_input = [
+            {
+                "role": "user",
+                "content": user_input_parts  # structured parts (text, image, etc.)
+            }
+        ]
 
-        api_input = [{"role": "user", "content": user_input_parts}]
-
-        response = openai_client.chat.completions.create(
+        response = openai_client.responses.create(
             model=model_info['api_id'],
-            messages=api_input,
+            input=api_input,
         )
-        output_text = response.choices[0].message.content or ""
-        # --- END AI LOGIC ---
+
+        # Extract text safely
+        output_text = ""
+        if response.output and len(response.output) > 0:
+            first_output = response.output[0]
+            if first_output.content and len(first_output.content) > 0:
+                output_text = first_output.content[0].text or ""
 
         # --- BILLING & DATABASE LOGIC ---
         price_per_word = model_info['price_per_word']
-        input_text_for_billing = " ".join(part.get("text", "") for part in user_input_parts if part.get("type") == "input_text")
-        input_word_count = count_words(input_text_for_billing)
+        input_word_count = count_words(" ".join(p.get("text", "") for p in user_input_parts))
         output_word_count = count_words(output_text)
         total_word_count = input_word_count + output_word_count
         total_cost = total_word_count * price_per_word
@@ -152,21 +150,23 @@ def process_playground_chat_task(self, task_id: int):
         if conversation_id:
             conversation = Conversation.query.get(conversation_id)
         else:
-            # Title generation logic
             title = "New Chat"
             try:
-                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {input_text_for_billing}"
+                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {output_text or '...' }"
                 title_model = models_config.get('gpt-4o') or model_info
-                title_resp = openai_client.chat.completions.create(
+                title_resp = openai_client.responses.create(
                     model=title_model['api_id'],
-                    messages=[{"role": "user", "content": title_prompt}],
+                    input=[{"role": "user", "content": [{"type": "text", "text": title_prompt}]}],
                 )
-                title_text = (title_resp.choices[0].message.content or "").strip().strip('"')
+                title_text = ""
+                if title_resp.output and len(title_resp.output) > 0:
+                    if title_resp.output[0].content and len(title_resp.output[0].content) > 0:
+                        title_text = (title_resp.output[0].content[0].text or "").strip().strip('"')
                 if title_text:
                     title = title_text
             except Exception as te:
                 logger.warning(f"Title generation failed: {te}")
-
+            
             conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
             db.session.add(conversation)
             db.session.flush()
@@ -177,13 +177,13 @@ def process_playground_chat_task(self, task_id: int):
             transaction_type='playground_fee',
             description=f"CONV-{conversation.id}: {total_word_count} words"
         ))
+
         db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
         db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
-        # Update the original task with the result
-        task.humanized_output = output_text  # Using this field to store the result
-        task.status = 'humanization_complete'  # Reusing status for completion
-        task.diff_data['final_conversation_id'] = conversation.id  # Store the final conv id
+        task.humanized_output = output_text
+        task.status = 'humanization_complete'
+        task.diff_data['final_conversation_id'] = conversation.id
 
         db.session.commit()
         return {'status': 'SUCCESS', 'result': output_text, 'conversation_id': conversation.id}
