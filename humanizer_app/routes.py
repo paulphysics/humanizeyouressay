@@ -180,18 +180,16 @@ def playground_chat():
         return jsonify({"error": "Invalid request. Expecting JSON."}), 400
 
     try:
+        # --- Configuration and Data Extraction (largely unchanged) ---
         models_config = current_app.config.get('MODELS', {})
         default_model_key = current_app.config.get('DEFAULT_MODEL_KEY', 'gpt-5')
-
+        
         user_input_parts = data.get('input', [])
         conversation_id = data.get('conversation_id')
-        previous_response_id = data.get('previous_response_id')
-
+        
         conversation = None
         if conversation_id:
-            conversation = Conversation.query.filter_by(
-                id=conversation_id, user_id=user.id
-            ).first()
+            conversation = Conversation.query.filter_by(id=conversation_id, user_id=user.id).first()
             if not conversation:
                 return jsonify({"error": "Conversation not found."}), 404
             model_key = conversation.model_key
@@ -202,117 +200,94 @@ def playground_chat():
         if not model_info:
             return jsonify({"error": f"Invalid model key: {model_key}"}), 400
 
-         # --- ** FIX STARTS HERE ** ---
-        # Base instructions for the AI
+        # --- Base instructions for the AI (unchanged) ---
         base_instructions = "You are a helpful assistant. All code you provide must be enclosed in triple backticks."
-
-        # Add a specific instruction about the model's name based on the selection
-        if model_key == 'gpt-5':
-            model_name = "ChatGPT 5"
-        elif model_key == 'gpt-4o':
-            model_name = "ChatGPT 4o"
-        else:
-            model_name = "AI Assistant" # A sensible default
-
+        model_name = models_config[model_key]['label']
         base_instructions += f" If a user asks for your name, you must respond that you are based on '{model_name}'."
-        # --- ** FIX ENDS HERE ** ---
-      
+        
         api_input = [{"role": "user", "content": user_input_parts}]
-        has_image = any(part.get("type") == "input_image" for part in user_input_parts)
 
-        def create_response_for(model, *, input_payload, instructions):
-            kwargs = {
-                "model": model['api_id'],
-                "instructions": instructions,
-                "input": input_payload,
-                "previous_response_id": previous_response_id,
-            }
-            if not model['api_id'].startswith("gpt-5"):
-                kwargs["temperature"] = 0.7
-            return openai_client.responses.create(**kwargs)
-
-        model_to_use = model_info
-        if has_image:
+        # --- THIS IS THE NEW STREAMING LOGIC ---
+        def generate_stream():
+            full_response_text = ""
             try:
-                logger.info(f"Image detected. Using primary model: {model_to_use['api_id']}")
-                response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-            except Exception as e:
-                logger.warning(f"Primary model ({model_to_use['api_id']}) failed: {e}. Fallback to GPT-4o.")
-                fallback_model = models_config.get('gpt-4o')
-                if not fallback_model:
-                    return jsonify({"error": "Fallback model not configured."}), 500
-                model_to_use = fallback_model
-                response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-        else:
-            logger.info(f"Using model: {model_to_use['api_id']} for playground chat")
-            response = create_response_for(model_to_use, input_payload=api_input, instructions=base_instructions)
-
-        # ... (rest of the function remains the same)
-        output_text = getattr(response, "output_text", "") or ""
-        new_response_id = getattr(response, "id", None)
-
-        price_per_word = model_to_use['price_per_word']
-        input_text_for_billing = " ".join(
-            part.get("text", "") for part in user_input_parts if part.get("type") == "input_text"
-        )
-
-        input_word_count = count_words(input_text_for_billing)
-        output_word_count = count_words(output_text)
-        total_word_count = input_word_count + output_word_count
-        total_cost = total_word_count * price_per_word
-
-        if not user.wallet or user.wallet.balance < total_cost:
-            return jsonify({"error": "Insufficient funds."}), 402
-
-        if not conversation:
-            title = "New Chat"
-            try:
-                title_prompt = (
-                    f"Create a short title (4-5 words max) for this chat:\n\nUser: {input_text_for_billing}"
+                # 1. Create the stream from the OpenAI client
+                stream = openai_client.responses.create(
+                    model=model_info['api_id'],
+                    instructions=base_instructions,
+                    input=api_input,
+                    stream=True # The most important change
                 )
-                title_model = models_config.get('gpt-4o') or model_to_use
-                title_kwargs = {
-                    "model": title_model['api_id'],
-                    "instructions": "You write concise chat titles. Return title only, no quotes.",
-                    "input": [{"role": "user", "content": [{"type": "input_text", "text": title_prompt}]}],
-                }
-                if not title_model['api_id'].startswith("gpt-5"):
-                    title_kwargs["temperature"] = 0.2
 
-                title_resp = openai_client.responses.create(**title_kwargs)
-                title_text = (getattr(title_resp, "output_text", "") or "").strip()
-                if title_text:
-                    title = title_text.strip('"')
-            except Exception as te:
-                logger.warning(f"Title generation failed, using default. Err: {te}")
+                # 2. Yield each chunk of text as it arrives
+                for chunk in stream:
+                    content = getattr(chunk, "output_text", "") or ""
+                    if content:
+                        full_response_text += content
+                        yield content
+                
+                # --- Database and Billing Logic (runs AFTER the stream is complete) ---
 
-            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
-            db.session.add(conversation)
-            db.session.flush()
+                # 3. Calculate the final cost
+                price_per_word = model_info['price_per_word']
+                input_text_for_billing = " ".join(part.get("text", "") for part in user_input_parts if part.get("type") == "input_text")
+                input_word_count = count_words(input_text_for_billing)
+                output_word_count = count_words(full_response_text)
+                total_word_count = input_word_count + output_word_count
+                total_cost = total_word_count * price_per_word
 
-        db.session.add(Transaction(
-            wallet_id=user.wallet.id, amount=-total_cost,
-            transaction_type='playground_fee',
-            description=f"CONV-{conversation.id}: {total_word_count} words"
-        ))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
+                if not user.wallet or user.wallet.balance < total_cost:
+                    logger.warning(f"User {user.id} has insufficient funds after stream completion.")
+                    return # Stop if funds are insufficient
 
-        user.wallet.balance -= total_cost
-        db.session.commit()
+                # 4. Create conversation and log messages if it's a new chat
+                nonlocal conversation
+                if not conversation:
+                    # Title generation logic remains the same
+                    title = "New Chat" # Default title
+                    try:
+                        title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {input_text_for_billing}"
+                        title_model = models_config.get('gpt-4o') or model_info
+                        title_resp = openai_client.responses.create(
+                            model=title_model['api_id'],
+                            instructions="You write concise chat titles. Return title only, no quotes.",
+                            input=[{"role": "user", "content": [{"type": "input_text", "text": title_prompt}]}]
+                        )
+                        title_text = (getattr(title_resp, "output_text", "") or "").strip().strip('"')
+                        if title_text:
+                            title = title_text
+                    except Exception as te:
+                        logger.warning(f"Title generation failed, using default. Err: {te}")
+                    
+                    conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
+                    db.session.add(conversation)
+                    db.session.flush() # Flush to get the conversation ID
 
-        return jsonify({
-            "status": "complete",
-            "response": output_text,
-            "conversation_id": conversation.id,
-            "response_id": new_response_id,
-            "wallet_balance": user.wallet.balance
-        })
+                # 5. Update wallet and save transaction and messages
+                user.wallet.balance -= total_cost
+                db.session.add(Transaction(
+                    wallet_id=user.wallet.id, amount=-total_cost,
+                    transaction_type='playground_fee',
+                    description=f"CONV-{conversation.id}: {total_word_count} words"
+                ))
+                db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
+                db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=full_response_text))
+                
+                db.session.commit()
+                logger.info(f"Successfully logged and billed playground chat for conversation {conversation.id}")
+
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Error during playground stream for user {user.id}: {e}", exc_info=True)
+                # Yield a user-friendly error message if something goes wrong during the stream
+                yield "Sorry, an error occurred while generating the response."
+
+        # 6. Return the streaming response to the frontend
+        return Response(stream_with_context(generate_stream()), mimetype='text/plain')
 
     except Exception as e:
-        db.session.rollback()
-        logger.error(f"Playground chat error for user {user.id}: {e}", exc_info=True)
-        return jsonify({"error": "An error occurred while communicating with the AI model."}), 500
+        logger.error(f"Initial playground chat error for user {user.id}: {e}", exc_info=True)
+        return jsonify({"error": "An error occurred before the AI stream could start."}), 500
 
 
 @main_bp.route("/humanizer", methods=['GET'])
