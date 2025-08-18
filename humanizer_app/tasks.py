@@ -122,11 +122,15 @@ def process_playground_chat_task(self, task_id: int):
 
         simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
 
-        # --- FIX: Build the conversation history ---
         messages = [{"role": "system", "content": system_instructions}]
         
+        conversation = None
         if conversation_id:
-            past_messages = ChatMessage.query.filter_by(conversation_id=conversation_id).order_by(ChatMessage.timestamp.asc()).all()
+            conversation = Conversation.query.get(conversation_id)
+
+        # If a conversation was found, load its history
+        if conversation:
+            past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.timestamp.asc()).all()
             for msg in past_messages:
                 if msg.role == 'user':
                     try:
@@ -137,29 +141,8 @@ def process_playground_chat_task(self, task_id: int):
                         messages.append({"role": "user", "content": msg.content})
                 else:
                     messages.append({"role": "assistant", "content": msg.content})
-
-        messages.append({"role": "user", "content": simple_user_input})
         
-        response = openai_client.chat.completions.create(
-            model=model_info['api_id'],
-            messages=messages,
-        )
-        output_text = response.choices[0].message.content or ""
-
-        # --- FIX: Correct billing logic ---
-        # Only charge for the new words, not the entire history
-        price_per_word = model_info['price_per_word']
-        input_word_count = count_words(simple_user_input)
-        output_word_count = count_words(output_text)
-        total_word_count = input_word_count + output_word_count
-        total_cost = total_word_count * price_per_word
-
-        if not user.wallet or user.wallet.balance < total_cost:
-            raise Exception("Insufficient funds detected during task execution.")
-
-        conversation = None
-        if conversation_id:
-            conversation = Conversation.query.get(conversation_id)
+        # If no conversation exists yet, create one now and save it immediately
         else:
             title = "New Chat"
             try:
@@ -176,7 +159,27 @@ def process_playground_chat_task(self, task_id: int):
             
             conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
             db.session.add(conversation)
-            db.session.flush()
+            
+            # ✅ THE FIX: Commit the new conversation immediately to prevent race conditions
+            db.session.commit()
+
+        messages.append({"role": "user", "content": simple_user_input})
+        
+        response = openai_client.chat.completions.create(
+            model=model_info['api_id'],
+            messages=messages,
+        )
+        output_text = response.choices[0].message.content or ""
+
+        # Correct billing logic: Only charge for the new words
+        price_per_word = model_info['price_per_word']
+        input_word_count = count_words(simple_user_input)
+        output_word_count = count_words(output_text)
+        total_word_count = input_word_count + output_word_count
+        total_cost = total_word_count * price_per_word
+
+        if not user.wallet or user.wallet.balance < total_cost:
+            raise Exception("Insufficient funds detected during task execution.")
 
         user.wallet.balance -= total_cost
         db.session.add(Transaction(
