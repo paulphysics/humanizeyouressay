@@ -239,22 +239,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         messageBubble.innerHTML = markdownToHtml(data.response);
                         highlightCodeBlocks();
                         addMessageActions(messageContainer, data.response);
-                        
+
                         // ✅ START: MODIFIED CODE BLOCK
                         if (data.conversation_id) {
-                            // Check if the conversation is new or has changed
-                            const isNewOrChangedConversation = !currentConversationId || currentConversationId !== data.conversation_id;
-                            
-                            // Always trust the ID from the backend to keep the state in sync
+                            const isNewConversation = !currentConversationId;
+                            // Always trust the conversation ID from the backend to prevent state loss.
                             currentConversationId = data.conversation_id;
-                        
-                            // If it's a new conversation, refresh the list in the sidebar
-                            if (isNewOrChangedConversation) {
+                            // Only refresh the sidebar if it's a brand new chat.
+                            if (isNewConversation) {
                                 await fetchConversations();
                             }
                         }
                         // ✅ END: MODIFIED CODE BLOCK
-
+                        
                         showProcessing(false);
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
