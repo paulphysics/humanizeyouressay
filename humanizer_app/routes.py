@@ -205,7 +205,8 @@ def playground_chat():
         # Immediately return the task ID to the client
         return jsonify({
             "status": "processing_started",
-            "task_id": new_task.id 
+            "task_id": new_task.id,
+            'conversation_id': None
         })
 
     except Exception as e:
