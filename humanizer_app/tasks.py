@@ -126,40 +126,32 @@ def process_playground_chat_task(self, task_id: int):
         messages = [{"role": "system", "content": system_instructions}]
         
         if conversation_id:
-            # Fetch previous messages from the database, ensuring correct order
             past_messages = ChatMessage.query.filter_by(conversation_id=conversation_id).order_by(ChatMessage.timestamp.asc()).all()
             for msg in past_messages:
-                # The user message content is stored as a JSON string
                 if msg.role == 'user':
                     try:
                         content_parts = json.loads(msg.content)
-                        # Reconstruct the simple text from the stored parts
                         simple_content = " ".join(part.get("text", "") for part in content_parts)
                         messages.append({"role": "user", "content": simple_content})
                     except (json.JSONDecodeError, TypeError):
-                        # Fallback for older, non-JSON content
                         messages.append({"role": "user", "content": msg.content})
                 else:
-                    # Assistant message is already a plain string
                     messages.append({"role": "assistant", "content": msg.content})
 
-        # Add the current user's new message to the history
         messages.append({"role": "user", "content": simple_user_input})
-        # --- END FIX ---
         
         response = openai_client.chat.completions.create(
             model=model_info['api_id'],
-            messages=messages, # Send the full, correct history
+            messages=messages,
         )
         output_text = response.choices[0].message.content or ""
 
-        # --- BILLING & DATABASE LOGIC ---
-        # Note: Billing now includes the word count of the entire history
-        history_word_count = sum(count_words(msg['content']) for msg in messages if msg['role'] != 'system')
-        output_word_count = count_words(output_text)
-        total_word_count = history_word_count + output_word_count
-        
+        # --- FIX: Correct billing logic ---
+        # Only charge for the new words, not the entire history
         price_per_word = model_info['price_per_word']
+        input_word_count = count_words(simple_user_input)
+        output_word_count = count_words(output_text)
+        total_word_count = input_word_count + output_word_count
         total_cost = total_word_count * price_per_word
 
         if not user.wallet or user.wallet.balance < total_cost:
