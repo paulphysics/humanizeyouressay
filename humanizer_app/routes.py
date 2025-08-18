@@ -173,6 +173,10 @@ def transaction_history():
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
 def playground_chat():
+    """
+    Accepts a request for playground chat and dispatches a Celery task.
+    Preserves conversation_id so context can continue across turns.
+    """
     user = User.query.get_or_404(session['user']['uid'])
     data = request.get_json()
     if not data:
@@ -181,12 +185,15 @@ def playground_chat():
     try:
         # Create a Task record to track this job
         task_ref = f"PLAYGROUND-{uuid.uuid4()}"
-        
-        # We store all the necessary info for the background task in `diff_data`
+
+        # Grab conversation_id if provided, else None
+        conversation_id = data.get('conversation_id')
+
+        # Store info for background task
         task_data = {
             'user_input_parts': data.get('input', []),
             'model_key': data.get('model'),
-            'conversation_id': data.get('conversation_id')
+            'conversation_id': conversation_id
         }
 
         new_task = Task(
@@ -194,7 +201,7 @@ def playground_chat():
             external_reference=task_ref,
             status='queued',
             diff_data=task_data,
-            input_text="Playground Chat" # Placeholder
+            input_text="Playground Chat"  # Placeholder
         )
         db.session.add(new_task)
         db.session.commit()
@@ -202,11 +209,11 @@ def playground_chat():
         # Dispatch the Celery task
         process_playground_chat_task.delay(new_task.id)
 
-        # Immediately return the task ID to the client
+        # Return task_id and conversation_id so the frontend can re-use it
         return jsonify({
             "status": "processing_started",
             "task_id": new_task.id,
-            'conversation_id': None
+            "conversation_id": conversation_id
         })
 
     except Exception as e:
