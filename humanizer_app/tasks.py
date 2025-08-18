@@ -112,69 +112,60 @@ def process_playground_chat_task(self, task_id: int):
         model_key = task.diff_data.get('model_key')
         conversation_id = task.diff_data.get('conversation_id')
         user = task.user
+        simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
 
         # --- Model config ---
         models_config = current_app.config.get('MODELS', {})
         model_info = models_config.get(model_key)
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
+        
+        # --- MODIFICATION START: Robust Conversation Handling ---
 
+        # 1. Prepare system instructions and message history list
         model_name = model_info.get('label', "AI Assistant")
         system_instructions = (
             "You are a helpful assistant. All code you provide must be enclosed in triple backticks. "
             f"If a user asks for your name, you must respond that you are based on '{model_name}'."
         )
-
-        # User message
-        simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
-
-        # --- Conversation setup ---
-        messages = [{"role": "system", "content": system_instructions}]
+        message_history = [{"role": "system", "content": system_instructions}]
+        
+        # 2. Fetch existing conversation or create a new one
         conversation = None
-
         if conversation_id:
             conversation = Conversation.query.get(conversation_id)
 
         if conversation:
-            # Load past history
-            past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.timestamp.asc()).all()
-            for msg in past_messages:
+            # 3. If conversation exists, load its history
+            logger.info(f"Loading existing conversation ID: {conversation.id}")
+            for msg in conversation.messages:  # Assumes 'messages' relationship is ordered by timestamp
                 if msg.role == 'user':
                     try:
+                        # Handle user content stored as a JSON string
                         content_parts = json.loads(msg.content)
                         simple_content = " ".join(part.get("text", "") for part in content_parts)
-                        messages.append({"role": "user", "content": simple_content})
+                        message_history.append({"role": "user", "content": simple_content})
                     except (json.JSONDecodeError, TypeError):
-                        messages.append({"role": "user", "content": msg.content})
+                        message_history.append({"role": "user", "content": msg.content})
                 elif msg.role == 'assistant':
-                    messages.append({"role": "assistant", "content": msg.content})
+                    message_history.append({"role": "assistant", "content": msg.content})
         else:
-            # Create a new conversation
-            title = "New Chat"
-            try:
-                title_prompt = f"Create a short title (max 5 words) for this chat:\n\nUser: {simple_user_input}"
-                title_model = models_config.get('gpt-4o') or model_info
-                title_resp = openai_client.chat.completions.create(
-                    model=title_model['api_id'],
-                    messages=[{"role": "user", "content": title_prompt}],
-                )
-                title_text = (title_resp.choices[0].message.content or "").strip().strip('"')
-                if title_text:
-                    title = title_text
-            except Exception as te:
-                logger.warning(f"Title generation failed: {te}")
-
+            # 4. If no conversation, create a new one
+            logger.info("No conversation ID provided, creating a new conversation.")
+            title = simple_user_input[:40] + '...' if len(simple_user_input) > 40 else simple_user_input
             conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
             db.session.add(conversation)
-            db.session.commit()  # ensure ID exists
+            db.session.commit() # Commit to get a valid conversation.id
 
-        # Append new user message
-        messages.append({"role": "user", "content": simple_user_input})
+        # 5. Add the new user message to the history for the API call
+        message_history.append({"role": "user", "content": simple_user_input})
 
-        # --- Call OpenAI ---
+        # --- MODIFICATION END ---
+
+        # --- Call OpenAI with the complete message history ---
         response = openai_client.chat.completions.create(
             model=model_info['api_id'],
-            messages=messages,
+            messages=message_history,
         )
         output_text = response.choices[0].message.content or ""
 
@@ -196,7 +187,7 @@ def process_playground_chat_task(self, task_id: int):
             description=f"CONV-{conversation.id}: {total_word_count} words"
         ))
 
-        # --- Save messages ---
+        # --- Save the new messages to the database for the *next* turn ---
         db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
         db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
@@ -215,4 +206,3 @@ def process_playground_chat_task(self, task_id: int):
         db.session.commit()
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         return {"status": "FAILURE", "error": "An unexpected error occurred. Please try again later."}
-
