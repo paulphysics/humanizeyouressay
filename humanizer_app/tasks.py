@@ -91,116 +91,87 @@ def process_humanization_task(task_id: int):
         db.session.commit()
 
 
-@shared_task(bind=True)
-def process_playground_chat_task(self, task_id: int):
+@shared_task(bind=True, max_retries=3)
+def process_playground_chat_task(self, chat_id):
     """
-    Celery task to process a playground chat message in the background.
+    Process a playground chat request with full conversation memory.
     """
-    task = Task.query.get(task_id)
-    if not task:
-        logger.error(f"[Playground Task ID: {task_id}] Task not found.")
-        return
+    from .extensions import db, openai_client
+    from .models import PlaygroundChat, Conversation, ChatMessage
 
     try:
-        logger.info(f"[Playground Task ID: {task.id}] Processing playground task.")
-        task.status = 'processing'
-        db.session.commit()
+        chat = PlaygroundChat.query.get(chat_id)
+        if not chat:
+            return
 
-        user_input_parts = task.diff_data.get('user_input_parts', [])
-        model_key = task.diff_data.get('model_key')
-        conversation_id = task.diff_data.get('conversation_id')
-        
-        user = task.user
-        models_config = current_app.config.get('MODELS', {})
-        model_info = models_config.get(model_key)
+        # Create or reuse a conversation
+        conversation = Conversation.query.filter_by(
+            user_id=chat.user_id,
+            playground_chat_id=chat.id
+        ).first()
 
-        model_name = model_info.get('label', "AI Assistant")
-        system_instructions = (
-            "You are a helpful assistant. All code you provide must be enclosed in triple backticks. "
-            f"If a user asks for your name, you must respond that you are based on '{model_name}'."
-        )
-
-        simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
-
-        messages = [{"role": "system", "content": system_instructions}]
-        
-        conversation = None
-        if conversation_id:
-            conversation = Conversation.query.get(conversation_id)
-
-        # If a conversation was found, load its history
-        if conversation:
-            past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.timestamp.asc()).all()
-            for msg in past_messages:
-                if msg.role == 'user':
-                    try:
-                        content_parts = json.loads(msg.content)
-                        simple_content = " ".join(part.get("text", "") for part in content_parts)
-                        messages.append({"role": "user", "content": simple_content})
-                    except (json.JSONDecodeError, TypeError):
-                        messages.append({"role": "user", "content": msg.content})
-                else:
-                    messages.append({"role": "assistant", "content": msg.content})
-        
-        # If no conversation exists yet, create one now and save it immediately
-        else:
-            title = "New Chat"
-            try:
-                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {simple_user_input}"
-                title_model = models_config.get('gpt-4o') or model_info
-                title_resp = openai_client.chat.completions.create(
-                    model=title_model['api_id'],
-                    messages=[{"role": "user", "content": title_prompt}],
-                )
-                title_text = (title_resp.choices[0].message.content or "").strip().strip('"')
-                if title_text: title = title_text
-            except Exception as te:
-                logger.warning(f"Title generation failed: {te}")
-            
-            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
+        if not conversation:
+            conversation = Conversation(
+                user_id=chat.user_id,
+                playground_chat_id=chat.id
+            )
             db.session.add(conversation)
-            
-            # ✅ THE FIX: Commit the new conversation immediately to prevent race conditions
             db.session.commit()
 
-        messages.append({"role": "user", "content": simple_user_input})
-        
-        response = openai_client.chat.completions.create(
-            model=model_info['api_id'],
-            messages=messages,
+        # Store the new user message
+        user_msg = ChatMessage(
+            conversation_id=conversation.id,
+            role="user",
+            content=json.dumps([{"type": "text", "text": chat.user_prompt}])
         )
-        output_text = response.choices[0].message.content or ""
-
-        # Correct billing logic: Only charge for the new words
-        price_per_word = model_info['price_per_word']
-        input_word_count = count_words(simple_user_input)
-        output_word_count = count_words(output_text)
-        total_word_count = input_word_count + output_word_count
-        total_cost = total_word_count * price_per_word
-
-        if not user.wallet or user.wallet.balance < total_cost:
-            raise Exception("Insufficient funds detected during task execution.")
-
-        user.wallet.balance -= total_cost
-        db.session.add(Transaction(
-            wallet_id=user.wallet.id, amount=-total_cost,
-            transaction_type='playground_fee',
-            description=f"CONV-{conversation.id}: {total_word_count} words"
-        ))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
-
-        task.humanized_output = output_text
-        task.status = 'humanization_complete'
-        task.diff_data['final_conversation_id'] = conversation.id
-
+        db.session.add(user_msg)
         db.session.commit()
-        return {'status': 'SUCCESS', 'result': output_text, 'conversation_id': conversation.id}
+
+        # ✅ Rebuild the full conversation history
+        chat_messages = ChatMessage.query.filter_by(
+            conversation_id=conversation.id
+        ).order_by(ChatMessage.created_at.asc()).all()
+
+        messages = []
+        # Always start with system prompt
+        messages.append({
+            "role": "system",
+            "content": [{"type": "text", "text": chat.system_prompt}]
+        })
+        for msg in chat_messages:
+            messages.append({
+                "role": msg.role,
+                "content": json.loads(msg.content)
+            })
+
+        # Call the model with full history
+        response = openai_client.chat.completions.create(
+            model="gpt-5",  # default override for playground
+            messages=messages,
+            temperature=chat.temperature,
+            top_p=chat.top_p,
+            presence_penalty=chat.presence_penalty,
+            frequency_penalty=chat.frequency_penalty,
+        )
+
+        assistant_reply = response.choices[0].message
+
+        # Store assistant reply
+        assistant_msg = ChatMessage(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=json.dumps(assistant_reply["content"])
+        )
+        db.session.add(assistant_msg)
+
+        chat.status = "completed"
+        chat.output = assistant_reply["content"][0]["text"]
+        db.session.commit()
 
     except Exception as e:
-        logger.error(f"Playground task {task.id} failed: {e}", exc_info=True)
-        task.status = 'humanization_failed'
-        task.error_message = "An error occurred while communicating with the AI model."
-        db.session.commit()
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
-        return {"status": "FAILURE", "error": "An unexpected error occurred. Please try again later."}
+        logger.error(f"Error in process_playground_chat_task: {e}", exc_info=True)
+        chat = PlaygroundChat.query.get(chat_id)
+        if chat:
+            chat.status = "failed"
+            db.session.commit()
+
