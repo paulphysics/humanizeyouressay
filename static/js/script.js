@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const showProcessing = (isProcessing) => {
             if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
         };
-        
+       
         const toggleHistorySidebar = () => {
             if (DOMElements.historySidebar && sidebarOverlay) {
                 DOMElements.historySidebar.classList.toggle('mobile-hidden');
@@ -239,10 +239,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         messageBubble.innerHTML = markdownToHtml(data.response);
                         highlightCodeBlocks();
                         addMessageActions(messageContainer, data.response);
-                        if (!currentConversationId && data.conversation_id) {
+                        
+                        // ✅ START: MODIFIED CODE BLOCK
+                        if (data.conversation_id) {
+                            // Check if the conversation is new or has changed
+                            const isNewOrChangedConversation = !currentConversationId || currentConversationId !== data.conversation_id;
+                            
+                            // Always trust the ID from the backend to keep the state in sync
                             currentConversationId = data.conversation_id;
-                            await fetchConversations();
+                        
+                            // If it's a new conversation, refresh the list in the sidebar
+                            if (isNewOrChangedConversation) {
+                                await fetchConversations();
+                            }
                         }
+                        // ✅ END: MODIFIED CODE BLOCK
+
                         showProcessing(false);
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
@@ -256,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }, 3000);
         };
-        
+       
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
             const prompt = DOMElements.promptInput.value.trim();
@@ -336,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
         };
-        
+       
         const handleFiles = async (files) => {
             const fileList = Array.from(files);
             let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
@@ -403,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
             actionsContainer.append(copyBtn, humanizeBtn);
             messageContainer.appendChild(actionsContainer);
         };
-        
+       
         const addMessageToLog = (sender, content, addActions = false) => {
             if (!DOMElements.chatLog) return;
             const isUser = sender === 'user';
@@ -411,14 +423,14 @@ document.addEventListener('DOMContentLoaded', () => {
             messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
             const messageBubble = document.createElement('div');
             messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-            
+           
             messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
             messageContainer.appendChild(messageBubble);
 
             if (!isUser && addActions) {
                 addMessageActions(messageContainer, content);
             }
-            
+           
             DOMElements.chatLog.appendChild(messageContainer);
             highlightCodeBlocks();
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
@@ -441,12 +453,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (msg.role === 'user') {
                         let displayContent = "";
                          if (Array.isArray(content)) {
-                            const textParts = content.filter(part => part.type === 'input_text').map(part => part.text).join(' ');
-                            const hasAttachments = content.some(part => part.type !== 'input_text');
-                            displayContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
-                        } else {
-                            displayContent = content;
-                        }
+                             const textParts = content.filter(part => part.type === 'input_text').map(part => part.text).join(' ');
+                             const hasAttachments = content.some(part => part.type !== 'input_text');
+                             displayContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
+                         } else {
+                             displayContent = content;
+                         }
                         addMessageToLog('user', displayContent);
                     } else {
                         addMessageToLog('bot', content, true);
@@ -527,7 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.conversationList.appendChild(convItem);
             });
         };
-        
+       
         const fetchConversations = async (query = '', page = 1) => {
             if (isFetchingHistory) return;
             isFetchingHistory = true;
@@ -554,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
-            
+           
             addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false); // No buttons for greeting
 
             isChatActive = false;
@@ -563,7 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
             document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
         };
-        
+       
         const setupModelSelector = async () => {
             if (!DOMElements.modelSelector) {
                 console.warn("Model selector element not found.");
@@ -723,7 +735,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.currentIndex = 0;
             }
         };
-        
+       
         function copyToClipboard(elementId) {
             const element = document.getElementById(elementId);
             if (!element) return;
@@ -863,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!AppState.transactionId) return;
                 try {
                     const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
-                    
+                   
                     if (!response.ok) {
                         if (response.status === 404) {
                             AppState.pollingRetries++;
@@ -875,9 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         throw new Error('Server returned an error.');
                     }
-                    
+                   
                     AppState.pollingRetries = 0;
-                    
+                   
                     const data = await response.json();
                     if (data.status === 'completed' || data.status === 'humanization_complete') {
                         Actions.stopPolling();
@@ -928,7 +940,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.onclick = () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
             if (DOMElements.submitPaymentBtn) DOMElements.submitPaymentBtn.onclick = Actions.submitHumanization;
             if (DOMElements.closeMpesaModalBtn) DOMElements.closeMpesaModalBtn.onclick = UI.closeAnonymousPaymentModal;
-            
+           
             if (DOMElements.toggleReferencesBtn && DOMElements.referencesSection) {
                 DOMElements.toggleReferencesBtn.addEventListener('click', function (event) {
                     event.preventDefault();
@@ -939,7 +951,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
             setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
             setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
-            
+           
             document.body.addEventListener('click', (e) => {
                 if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
             });
