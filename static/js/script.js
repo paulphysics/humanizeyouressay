@@ -139,41 +139,41 @@ document.addEventListener('DOMContentLoaded', () => {
         function markdownToHtml(text) {
             if (typeof marked !== 'undefined') {
                return marked.parse(text);
-           }
-           console.warn("marked.js not loaded. Using fallback markdown renderer.");
-           return text
-               .replace(/</g, "&lt;").replace(/>/g, "&gt;")
-               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-               .replace(/\*(.*?)\*/g, '<em>$1</em>')
-               .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-               .replace(/\n/g, '<br>');
-       }
-       
+            }
+            console.warn("marked.js not loaded. Using fallback markdown renderer.");
+            return text
+                .replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+                .replace(/\n/g, '<br>');
+        }
+        
         const highlightCodeBlocks = () => {
            if (typeof hljs === 'undefined') {
                console.warn('highlight.js not loaded, skipping syntax highlighting.');
                return;
            }
-       
+        
            document.querySelectorAll('#chat-log pre').forEach((preElement) => {
                const block = preElement.querySelector('code');
                if (!block) return;
-       
+        
                if (!block.hasAttribute('data-highlighted')) {
                    hljs.highlightElement(block);
                    block.setAttribute('data-highlighted', 'true');
                }
-       
+        
                if (!preElement.querySelector('.code-copy-btn')) {
                    const copyBtn = document.createElement('button');
                    copyBtn.className = 'code-copy-btn';
                    copyBtn.title = 'Copy code';
-       
+        
                    const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
                    const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-       
+        
                    copyBtn.innerHTML = clipboardIcon;
-       
+        
                    copyBtn.addEventListener('click', () => {
                        navigator.clipboard.writeText(block.innerText).then(() => {
                            copyBtn.innerHTML = checkIcon;
@@ -184,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
                            console.error('Failed to copy text: ', err);
                        });
                    });
-       
+        
                    preElement.prepend(copyBtn);
                }
            });
@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const showProcessing = (isProcessing) => {
             if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
         };
-       
+        
         const toggleHistorySidebar = () => {
             if (DOMElements.historySidebar && sidebarOverlay) {
                 DOMElements.historySidebar.classList.toggle('mobile-hidden');
@@ -237,6 +237,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         highlightCodeBlocks();
                         addMessageActions(messageContainer, data.response);
                         showProcessing(false);
+                        
+                        // --- NEW: Update conversation title in the list ---
+                        if (data.conversation_title) {
+                            const convItem = DOMElements.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
+                            if (convItem) {
+                                const titleSpan = convItem.querySelector('span.truncate');
+                                if(titleSpan) titleSpan.textContent = data.conversation_title;
+                            }
+                        }
+                        // --- END ---
+
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
                         messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
@@ -249,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }, 3000);
         };
-       
+        
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
             const prompt = DOMElements.promptInput.value.trim();
@@ -302,15 +313,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
 
-                // --- FIX: Handle the immediate conversation_id from the response ---
                 if (data.conversation_id) {
                     const isNewConversation = !DOMElements.conversationIdInput.value;
                     DOMElements.conversationIdInput.value = data.conversation_id;
                     if (isNewConversation) {
-                        await fetchConversations();
+                        // Refresh the conversation list to show the new "New Chat" entry
+                        await fetchConversations(); 
                     }
                 }
-                // --- END OF FIX ---
 
                 if (data.status === 'processing_started' && data.task_id) {
                     pollForTaskResult(data.task_id, messageContainer, messageBubble);
@@ -345,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
         };
-       
+        
         const handleFiles = async (files) => {
             const fileList = Array.from(files);
             let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
@@ -412,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
             actionsContainer.append(copyBtn, humanizeBtn);
             messageContainer.appendChild(actionsContainer);
         };
-       
+        
         const addMessageToLog = (sender, content, addActions = false) => {
             if (!DOMElements.chatLog) return;
             const isUser = sender === 'user';
@@ -420,14 +430,14 @@ document.addEventListener('DOMContentLoaded', () => {
             messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
             const messageBubble = document.createElement('div');
             messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-           
+            
             messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
             messageContainer.appendChild(messageBubble);
 
             if (!isUser && addActions) {
                 addMessageActions(messageContainer, content);
             }
-           
+            
             DOMElements.chatLog.appendChild(messageContainer);
             highlightCodeBlocks();
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
@@ -538,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.conversationList.appendChild(convItem);
             });
         };
-       
+        
         const fetchConversations = async (query = '', page = 1) => {
             if (isFetchingHistory) return;
             isFetchingHistory = true;
@@ -566,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
-           
+            
             addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false);
 
             isChatActive = false;
@@ -575,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
             document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
         };
-       
+        
         const setupModelSelector = async () => {
             if (!DOMElements.modelSelector) {
                 console.warn("Model selector element not found.");
@@ -740,7 +750,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.currentIndex = 0;
             }
         };
-       
+        
         function copyToClipboard(elementId) {
             const element = document.getElementById(elementId);
             if (!element) return;
@@ -880,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!AppState.transactionId) return;
                 try {
                     const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
-                   
+                    
                     if (!response.ok) {
                         if (response.status === 404) {
                             AppState.pollingRetries++;
@@ -892,9 +902,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         throw new Error('Server returned an error.');
                     }
-                   
+                    
                     AppState.pollingRetries = 0;
-                   
+                    
                     const data = await response.json();
                     if (data.status === 'completed' || data.status === 'humanization_complete') {
                         Actions.stopPolling();
@@ -945,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.onclick = () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
             if (DOMElements.submitPaymentBtn) DOMElements.submitPaymentBtn.onclick = Actions.submitHumanization;
             if (DOMElements.closeMpesaModalBtn) DOMElements.closeMpesaModalBtn.onclick = UI.closeAnonymousPaymentModal;
-           
+            
             if (DOMElements.toggleReferencesBtn && DOMElements.referencesSection) {
                 DOMElements.toggleReferencesBtn.addEventListener('click', function (event) {
                     event.preventDefault();
@@ -956,7 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
             setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
             setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
-           
+            
             document.body.addEventListener('click', (e) => {
                 if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
             });
