@@ -107,25 +107,20 @@ def process_playground_chat_task(self, task_id: int):
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found.")
 
-        # --- Simplified Logic: The conversation and user message already exist ---
         message_history = []
         past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
         
         for msg in past_messages:
-            # Reconstruct simple text content for the AI model
             if msg.role == 'user':
                 try:
-                    # User message content is now stored as full JSON from routes.py
                     content_parts = json.loads(msg.content)
                     simple_content = " ".join(part.get("text", "") for part in content_parts if part.get("type") == "input_text")
                     message_history.append({"role": "user", "content": simple_content})
                 except (json.JSONDecodeError, TypeError):
-                     # Fallback for older, plain text messages if any exist
                     message_history.append({"role": "user", "content": msg.content})
             elif msg.role == 'assistant':
                 message_history.append({"role": "assistant", "content": msg.content})
 
-        # --- Call OpenAI ---
         model_key = task_data.get('model_key')
         models_config = current_app.config.get('MODELS', {})
         model_info = models_config.get(model_key)
@@ -138,48 +133,50 @@ def process_playground_chat_task(self, task_id: int):
         )
         output_text = response.choices[0].message.content or ""
 
-       # --- MODIFIED: Title Generation Logic with Immediate Commit ---
+        # --- DISTILLED LOGIC: Title Generation (from previous working version) ---
+        # This logic runs only for the first message exchange in a conversation.
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
-                # ... (title generation code remains the same)
+                # Extract the initial user prompt to use for title generation context
                 try:
                     user_content_parts = json.loads(past_messages[0].content)
                     user_prompt_for_title = " ".join(part.get("text", "") for part in user_content_parts if part.get("type") == "input_text")
                 except (json.JSONDecodeError, TypeError):
                     user_prompt_for_title = past_messages[0].content
-                
-                title_generation_prompt = (
-                    "Based on the following user query and the assistant's response, "
-                    "generate a concise, descriptive title of 3 to 5 words. "
-                    "Do not use quotation marks."
-                )
-                title_generation_context = f"USER QUERY: \"{user_prompt_for_title}\"\n\nASSISTANT RESPONSE: \"{output_text}\""
 
-                from .humanizer_service.api_clients import call_api_with_fallback
-                new_title = call_api_with_fallback(
-                    model_list=["gpt-4o"],
-                    system_message=title_generation_prompt,
-                    user_prompt=title_generation_context,
-                    temperature=0.4,
+                # The prompt that asks the AI to create a title
+                title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {user_prompt_for_title}\nAssistant: {output_text}"
+                
+                # Use a fast model for title generation
+                title_model = models_config.get('gpt-4o') or model_info
+                
+                # Call the API to generate the title
+                title_resp = openai_client.chat.completions.create(
+                    model=title_model['api_id'],
+                    messages=[
+                        {"role": "system", "content": "You write concise chat titles. Return the title only, with no quotes."},
+                        {"role": "user", "content": title_prompt}
+                    ],
+                    temperature=0.2,
                     max_tokens=20
                 )
+                
+                title_text = (title_resp.choices[0].message.content or "").strip()
 
-                if new_title and conversation:
-                    conversation.title = new_title.strip().strip('"')
+                if title_text and conversation:
+                    conversation.title = title_text.strip('"')
                     db.session.add(conversation)
-                    # ---- ADD THIS LINE ----
-                    db.session.commit() # Commit the title immediately
+                    # Commit the title immediately to ensure it's saved
+                    db.session.commit()
 
-            except Exception as e:
-                logger.error(f"Could not generate or save chat title for CONV-{conversation.id}: {e}")
-                # ---- ADD THIS LINE ----
-                db.session.rollback() # Rollback if title generation fails
-        # --- END of Title Generation Logic ---
+            except Exception as te:
+                logger.warning(f"Title generation failed for CONV-{conversation.id}, using default. Error: {te}")
+                # Rollback in case of a title generation error to not affect the main transaction
+                db.session.rollback()
+        # --- END OF DISTILLED LOGIC ---
 
-        # --- Billing Logic ---
         user = task.user
         price_per_word = model_info['price_per_word']
-        # We only bill for the AI's output words now
         output_word_count = count_words(output_text)
         total_cost = output_word_count * price_per_word
 
@@ -194,10 +191,8 @@ def process_playground_chat_task(self, task_id: int):
             description=f"CONV-{conversation.id}: {output_word_count} words"
         ))
 
-        # --- Save ONLY the assistant's response ---
         db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
-        # --- Finalize task ---
         task.humanized_output = output_text
         task.status = 'humanization_complete'
         dd = dict(task.diff_data or {})
@@ -207,12 +202,10 @@ def process_playground_chat_task(self, task_id: int):
 
     except Exception as e:
         logger.error(f"Playground chat task {task_id} failed: {e}", exc_info=True)
-        # IMPORTANT: reset the failed transaction before updating the Task
         try:
             db.session.rollback()
         except Exception:
             pass
-        # Re-fetch a clean instance before updating
         task = Task.query.get(task_id)
         if task:
             task.status = 'humanization_failed'
