@@ -26,14 +26,12 @@ def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
-    # The app context is automatically handled by the worker setup.
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Task ID: {task_id}] Task not found in background job.")
         return
 
     try:
-        # (Your existing, correct humanization logic remains here)
         logger.info(f"[Task ID: {task.id}] Processing task: {task.external_reference}")
         task.status = 'humanizing'
         db.session.commit()
@@ -50,7 +48,6 @@ def process_humanization_task(task_id: int):
         task.diff_data = updated_diff_data
         task.status = 'humanization_complete'
 
-        # This is the existing PARTIAL refund logic (remains unchanged)
         if failed_word_count > 0:
             user = task.user
             if user and user.wallet:
@@ -74,21 +71,17 @@ def process_humanization_task(task_id: int):
         logger.error(f"Humanization task {task_id} failed: {e}", exc_info=True)
         db.session.rollback()
         
-        # --- START: NEW FULL REFUND LOGIC ---
-        task = Task.query.get(task_id) # Re-fetch the task to ensure a clean state
+        task = Task.query.get(task_id)
         if task:
             task.status = 'humanization_failed'
             task.error_message = "An unexpected error occurred. A full refund has been issued."
             
-            # Find the user and the original amount charged for this task
             user = task.user
             original_charge = task.amount_charged
             
             if user and user.wallet and original_charge > 0:
-                # Add the full amount back to the user's wallet
                 user.wallet.balance += original_charge
                 
-                # Create a new transaction record for the full refund
                 db.session.add(Transaction(
                     wallet_id=user.wallet.id,
                     amount=original_charge,
@@ -98,7 +91,6 @@ def process_humanization_task(task_id: int):
                 logger.info(f"Full refund of KSh {original_charge:.2f} processed for user {user.id} for failed task {task.id}.")
 
             db.session.commit()
-        # --- END: NEW FULL REFUND LOGIC ---
             
     finally:
         db.session.remove()
@@ -109,7 +101,6 @@ def process_playground_chat_task(self, task_id: int):
     """
     Celery task to process a playground chat message in the background.
     """
-    # This function remains unchanged.
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Playground Task ID: {task_id}] Task not found.")
@@ -149,13 +140,20 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
+        # --- NEW: System prompt to enforce codeblock formatting ---
+        system_prompt = {
+            "role": "system",
+            "content": "You are a helpful assistant. For all code snippets, please use markdown code blocks (e.g., ```python ... ```) to ensure proper formatting."
+        }
+        final_messages = [system_prompt] + message_history
+        # --- END OF NEW LOGIC ---
+
         response = openai_client.chat.completions.create(
             model=model_info['api_id'],
-            messages=message_history,
+            messages=final_messages, # Use the new message list with the system prompt
         )
         output_text = response.choices[0].message.content or ""
 
-        # --- DISTILLED LOGIC: Title Generation (from previous working version) ---
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
                 try:
@@ -188,7 +186,6 @@ def process_playground_chat_task(self, task_id: int):
             except Exception as te:
                 logger.warning(f"Title generation failed for CONV-{conversation.id}, using default. Error: {te}")
                 db.session.rollback()
-        # --- END OF DISTILLED LOGIC ---
 
         user = task.user
         price_per_word = model_info['price_per_word']
