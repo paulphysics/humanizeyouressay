@@ -157,7 +157,7 @@ def transaction_history():
                 conv_id = int(conv_id_str)
                 conversation = Conversation.query.get(conv_id)
                 if conversation:
-                    t.display_title = conversation.title"
+                    t.display_title = conversation.title
             except (IndexError, ValueError):
                 pass
 
