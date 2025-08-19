@@ -10,7 +10,7 @@ import threading
 import logging
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
-                 redirect, url_for, flash, current_app, session, abort)
+                   redirect, url_for, flash, current_app, session, abort)
 from werkzeug.exceptions import RequestEntityTooLarge 
 from sqlalchemy import desc, or_
 import pytz
@@ -250,6 +250,8 @@ def playground_chat():
         logger.error(f"Playground chat submission error for user {user.id}: {e}", exc_info=True)
         return jsonify({"error": "Failed to start the chat task."}), 500
 
+# ----------------- MODIFICATION IS HERE ----------------- #
+
 @main_bp.route("/get_playground_task_status/<int:task_id>", methods=['GET'])
 @auth_required
 def get_playground_task_status(task_id):
@@ -260,11 +262,17 @@ def get_playground_task_status(task_id):
         return jsonify({"error": "Unauthorized"}), 403
 
     if task.status == 'humanization_complete':
-        # On completion, send back the final response and conversation ID
+        final_conversation_id = (task.diff_data or {}).get("final_conversation_id")
+        
+        # Fetch the conversation to get the updated title
+        conversation = Conversation.query.get(final_conversation_id) if final_conversation_id else None
+        
+        # On completion, send back the final response, conversation ID, AND the new title
         return jsonify({
             "status": "complete",
             "response": task.humanized_output,
-            "conversation_id": task.diff_data.get('final_conversation_id')
+            "conversation_id": final_conversation_id,
+            "conversation_title": conversation.title if conversation else "Chat" # Add this line
         })
     elif task.status == 'humanization_failed':
         return jsonify({
@@ -274,6 +282,9 @@ def get_playground_task_status(task_id):
     else:
         # Otherwise, just report that it's still processing
         return jsonify({"status": "processing"})
+
+# ----------------- END OF MODIFICATION ----------------- #
+
 
 @main_bp.route("/humanizer", methods=['GET'])
 @auth_required
