@@ -153,12 +153,20 @@ def transaction_history():
         
         elif t.transaction_type == 'playground_fee' and t.description and t.description.startswith('CONV-'):
             try:
-                conv_id_str = t.description.split(':')[0].split('-')[1]
+                # Extracts 'CONV-266' from 'CONV-266: 15 words'
+                conv_id_part = t.description.split(':')[0]
+                conv_id_str = conv_id_part.split('-')[1]
                 conv_id = int(conv_id_str)
                 conversation = Conversation.query.get(conv_id)
-                if conversation:
+                if conversation and conversation.title:
+                    # Combines the original description with the conversation title
+                    # Result: "CONV-266: 15 words - Introducing Freder"
                     t.display_title = f"{t.description} - {conversation.title}"
+                else:
+                    # Fallback if there's no title
+                    t.display_title = t.description
             except (IndexError, ValueError):
+                # Fallback if parsing the description fails
                 pass
 
     username = get_display_name(user)
