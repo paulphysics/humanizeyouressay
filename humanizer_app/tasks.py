@@ -50,7 +50,7 @@ def process_humanization_task(task_id: int):
         task.diff_data = updated_diff_data
         task.status = 'humanization_complete'
 
-        # (Your refund logic remains here)
+        # This is the existing PARTIAL refund logic (remains unchanged)
         if failed_word_count > 0:
             user = task.user
             if user and user.wallet:
@@ -73,11 +73,33 @@ def process_humanization_task(task_id: int):
     except Exception as e:
         logger.error(f"Humanization task {task_id} failed: {e}", exc_info=True)
         db.session.rollback()
-        task = Task.query.get(task_id)
+        
+        # --- START: NEW FULL REFUND LOGIC ---
+        task = Task.query.get(task_id) # Re-fetch the task to ensure a clean state
         if task:
             task.status = 'humanization_failed'
-            task.error_message = "An unexpected error occurred."
+            task.error_message = "An unexpected error occurred. A full refund has been issued."
+            
+            # Find the user and the original amount charged for this task
+            user = task.user
+            original_charge = task.amount_charged
+            
+            if user and user.wallet and original_charge > 0:
+                # Add the full amount back to the user's wallet
+                user.wallet.balance += original_charge
+                
+                # Create a new transaction record for the full refund
+                db.session.add(Transaction(
+                    wallet_id=user.wallet.id,
+                    amount=original_charge,
+                    transaction_type='refund',
+                    description=f'Full refund for failed task {task.external_reference}'
+                ))
+                logger.info(f"Full refund of KSh {original_charge:.2f} processed for user {user.id} for failed task {task.id}.")
+
             db.session.commit()
+        # --- END: NEW FULL REFUND LOGIC ---
+            
     finally:
         db.session.remove()
 
@@ -87,7 +109,7 @@ def process_playground_chat_task(self, task_id: int):
     """
     Celery task to process a playground chat message in the background.
     """
-    # The app context is automatically handled by the worker setup.
+    # This function remains unchanged.
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Playground Task ID: {task_id}] Task not found.")
@@ -134,23 +156,18 @@ def process_playground_chat_task(self, task_id: int):
         output_text = response.choices[0].message.content or ""
 
         # --- DISTILLED LOGIC: Title Generation (from previous working version) ---
-        # This logic runs only for the first message exchange in a conversation.
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
-                # Extract the initial user prompt to use for title generation context
                 try:
                     user_content_parts = json.loads(past_messages[0].content)
                     user_prompt_for_title = " ".join(part.get("text", "") for part in user_content_parts if part.get("type") == "input_text")
                 except (json.JSONDecodeError, TypeError):
                     user_prompt_for_title = past_messages[0].content
 
-                # The prompt that asks the AI to create a title
                 title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {user_prompt_for_title}\nAssistant: {output_text}"
                 
-                # Use a fast model for title generation
                 title_model = models_config.get('gpt-4o') or model_info
                 
-                # Call the API to generate the title
                 title_resp = openai_client.chat.completions.create(
                     model=title_model['api_id'],
                     messages=[
@@ -166,12 +183,10 @@ def process_playground_chat_task(self, task_id: int):
                 if title_text and conversation:
                     conversation.title = title_text.strip('"')
                     db.session.add(conversation)
-                    # Commit the title immediately to ensure it's saved
                     db.session.commit()
 
             except Exception as te:
                 logger.warning(f"Title generation failed for CONV-{conversation.id}, using default. Error: {te}")
-                # Rollback in case of a title generation error to not affect the main transaction
                 db.session.rollback()
         # --- END OF DISTILLED LOGIC ---
 
