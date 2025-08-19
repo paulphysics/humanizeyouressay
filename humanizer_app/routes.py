@@ -10,7 +10,7 @@ import threading
 import logging
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
-                   redirect, url_for, flash, current_app, session, abort)
+                 redirect, url_for, flash, current_app, session, abort)
 from werkzeug.exceptions import RequestEntityTooLarge 
 from sqlalchemy import desc, or_
 import pytz
@@ -173,27 +173,45 @@ def transaction_history():
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
 def playground_chat():
-    """
-    Accepts a request for playground chat and dispatches a Celery task.
-    Preserves conversation_id so context can continue across turns.
-    """
     user = User.query.get_or_404(session['user']['uid'])
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid request."}), 400
+    data = request.get_json() or {}
+    input_parts = data.get('input', [])
+    model_key = data.get('model')
+    conversation_id = data.get('conversation_id')
+
+    if not isinstance(input_parts, list) or not input_parts:
+        return jsonify({"error": "No input provided."}), 400
 
     try:
-        # Create a Task record to track this job
+        # 1) Create or load a conversation synchronously so the UI gets a stable ID
+        if conversation_id:
+            conversation = Conversation.query.filter_by(id=conversation_id, user_id=user.id).first_or_404()
+        else:
+            # Title from first text chunk (fallback if empty)
+            raw_title = " ".join(
+                p.get("text", "").strip()
+                for p in input_parts
+                if p.get("type") == "input_text"
+            ).strip()
+            title = (raw_title[:60] or "New chat")
+            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
+            db.session.add(conversation)
+            db.session.flush()  # get conversation.id without a separate transaction
+            conversation_id = conversation.id
+
+        # 2) Persist the user's message now, so history exists for the worker
+        db.session.add(ChatMessage(
+            conversation_id=conversation_id,
+            role="user",
+            content=json.dumps(input_parts)
+        ))
+
+        # 3) Create the Task and enqueue the worker
         task_ref = f"PLAYGROUND-{uuid.uuid4()}"
-
-        # Grab conversation_id if provided, else None
-        conversation_id = data.get('conversation_id')
-
-        # Store info for background task
         task_data = {
-            'user_input_parts': data.get('input', []),
-            'model_key': data.get('model'),
-            'conversation_id': conversation_id
+            "user_input_parts": input_parts,
+            "model_key": model_key,
+            "conversation_id": conversation_id,
         }
 
         new_task = Task(
@@ -201,15 +219,14 @@ def playground_chat():
             external_reference=task_ref,
             status='queued',
             diff_data=task_data,
-            input_text="Playground Chat"  # Placeholder
+            input_text="Playground Chat",
         )
         db.session.add(new_task)
         db.session.commit()
 
-        # Dispatch the Celery task
         process_playground_chat_task.delay(new_task.id)
 
-        # Return task_id and conversation_id so the frontend can re-use it
+        # Immediately return the task ID and the stable conversation_id
         return jsonify({
             "status": "processing_started",
             "task_id": new_task.id,
@@ -221,8 +238,6 @@ def playground_chat():
         logger.error(f"Playground chat submission error for user {user.id}: {e}", exc_info=True)
         return jsonify({"error": "Failed to start the chat task."}), 500
 
-
-# --- ADD this new function to the end of routes.py ---
 @main_bp.route("/get_playground_task_status/<int:task_id>", methods=['GET'])
 @auth_required
 def get_playground_task_status(task_id):
@@ -278,7 +293,7 @@ def playground():
         is_admin=user.is_admin,
         models=models
     )
-      
+    
 def _initiate_payment_in_background(app, amount, phone_number, transaction_ref):
     with app.app_context():
         try:
@@ -349,7 +364,7 @@ def _handle_logged_in_humanization():
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
-                                    transaction_type='humanize_fee', description=transaction_ref))
+                                     transaction_type='humanize_fee', description=transaction_ref))
         
         new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
                         amount_charged=amount_to_charge, status='queued', user_id=user.id, # Status is now 'queued'
@@ -357,10 +372,7 @@ def _handle_logged_in_humanization():
         db.session.add(new_task)
         db.session.commit()
         
-        # --- THIS IS THE ONLY PART THAT HAS CHANGED ---
-        # The old threading code has been replaced with this single line.
         process_humanization_task.delay(new_task.id)
-        # ----------------------------------------------
         
         return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
 
@@ -422,7 +434,7 @@ def payhero_callback():
                 user = task.user
                 user.wallet.balance += amount
                 db.session.add(Transaction(wallet_id=user.wallet.id, amount=amount,
-                                           transaction_type='top-up', description=f"M-Pesa top-up from {task.phone_number}"))
+                                            transaction_type='top-up', description=f"M-Pesa top-up from {task.phone_number}"))
                 task.status = 'topup_complete'
             else:
                 task.status = 'topup_failed'
@@ -621,7 +633,7 @@ def contact():
                            username=username,
                            wallet_balance=wallet_balance,
                            is_admin=is_admin)
-      
+    
 @main_bp.route("/get_conversations", methods=['GET'])
 @auth_required
 def get_conversations():
