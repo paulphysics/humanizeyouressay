@@ -138,27 +138,23 @@ def process_playground_chat_task(self, task_id: int):
         )
         output_text = response.choices[0].message.content or ""
 
-        # --- NEW: Improved Title Generation Logic ---
-        # Generate a title only after the first user message has been processed.
+       # --- MODIFIED: Title Generation Logic with Immediate Commit ---
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
-                # Extract the original user prompt for context
+                # ... (title generation code remains the same)
                 try:
                     user_content_parts = json.loads(past_messages[0].content)
                     user_prompt_for_title = " ".join(part.get("text", "") for part in user_content_parts if part.get("type") == "input_text")
                 except (json.JSONDecodeError, TypeError):
                     user_prompt_for_title = past_messages[0].content
                 
-                # Prepare a prompt for the title generation AI
                 title_generation_prompt = (
                     "Based on the following user query and the assistant's response, "
                     "generate a concise, descriptive title of 3 to 5 words. "
                     "Do not use quotation marks."
                 )
-                
                 title_generation_context = f"USER QUERY: \"{user_prompt_for_title}\"\n\nASSISTANT RESPONSE: \"{output_text}\""
 
-                # Call the AI to generate a title
                 from .humanizer_service.api_clients import call_api_with_fallback
                 new_title = call_api_with_fallback(
                     model_list=["gpt-4o"],
@@ -169,13 +165,15 @@ def process_playground_chat_task(self, task_id: int):
                 )
 
                 if new_title and conversation:
-                    # Clean up the title and save it to the database
                     conversation.title = new_title.strip().strip('"')
                     db.session.add(conversation)
+                    # ---- ADD THIS LINE ----
+                    db.session.commit() # Commit the title immediately
 
             except Exception as e:
-                # If title generation fails, log the error but don't stop the main task
-                logger.error(f"Could not generate chat title for CONV-{conversation.id} due to an error: {e}")
+                logger.error(f"Could not generate or save chat title for CONV-{conversation.id}: {e}")
+                # ---- ADD THIS LINE ----
+                db.session.rollback() # Rollback if title generation fails
         # --- END of Title Generation Logic ---
 
         # --- Billing Logic ---
