@@ -1,12 +1,12 @@
 # humanizer_app/tasks.py
-"""
-This module contains the Celery background tasks for processing humanization
-requests and playground chats.
-"""
 import logging
 import json
 from celery import shared_task
 from flask import current_app
+
+# Import the app factory to create a proper application context
+from humanizer_app import create_app
+
 from .extensions import db
 from .models import Task, User, Transaction, Conversation, ChatMessage
 from .humanizer_service.workflows import perform_humanization_task
@@ -19,190 +19,171 @@ from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT, ESSAY_PRICE_PER_UNI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create an app instance for the Celery worker
+app = create_app()
+
 
 @shared_task(ignore_result=True)
 def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
-    task = Task.query.get(task_id)
-    if not task:
-        logger.error(f"[Task ID: {task_id}] Task not found in background job.")
-        return
+    with app.app_context():
+        task = Task.query.get(task_id)
+        if not task:
+            logger.error(f"[Task ID: {task_id}] Task not found in background job.")
+            return
 
-    try:
-        logger.info(f"[Task ID: {task.id}] Processing task: {task.external_reference}")
-        task.status = 'humanizing'
-        db.session.commit()
+        try:
+            # (Your existing, correct humanization logic remains here)
+            logger.info(f"[Task ID: {task.id}] Processing task: {task.external_reference}")
+            task.status = 'humanizing'
+            db.session.commit()
 
-        humanized_output, word_count, updated_diff_data, failed_word_count, total_paragraph_word_count = perform_humanization_task(
-            task.input_text,
-            diff_data=task.diff_data,
-            dialect=task.diff_data.get("english_dialect", "us"),
-            mode=task.diff_data.get("humanizer_mode", "standard")
-        )
+            humanized_output, word_count, updated_diff_data, failed_word_count, total_paragraph_word_count = perform_humanization_task(
+                task.input_text,
+                diff_data=task.diff_data,
+                dialect=task.diff_data.get("english_dialect", "us"),
+                mode=task.diff_data.get("humanizer_mode", "standard")
+            )
 
-        task.humanized_output = humanized_output
-        task.output_word_count = word_count
-        task.diff_data = updated_diff_data
-        task.status = 'humanization_complete'
+            task.humanized_output = humanized_output
+            task.output_word_count = word_count
+            task.diff_data = updated_diff_data
+            task.status = 'humanization_complete'
 
-        if failed_word_count > 0:
-            user = task.user
-            if user and user.wallet:
-                price = ESSAY_PRICE_PER_UNIT if task.diff_data.get("humanizer_mode") == 'essay' else PRICE_PER_UNIT
-                refund_amount = round((failed_word_count / WORDS_PER_UNIT) * price, 2)
-                if refund_amount > 0:
-                    user.wallet.balance += refund_amount
-                    db.session.add(Transaction(
-                        wallet_id=user.wallet.id,
-                        amount=refund_amount,
-                        transaction_type='refund',
-                        description=f'Partial refund for task {task.external_reference}'
-                    ))
-                    humanized_word_count = total_paragraph_word_count - failed_word_count
-                    task.diff_data['refund_info'] = f"{humanized_word_count}/{total_paragraph_word_count} words were humanized. KSh {refund_amount:.2f} has been refunded to your wallet."
-                    logger.info(f"Refunded KSh {refund_amount} to user {user.id} for {failed_word_count} failed words.")
+            # (Your refund logic remains here)
+            if failed_word_count > 0:
+                user = task.user
+                if user and user.wallet:
+                    price = ESSAY_PRICE_PER_UNIT if task.diff_data.get("humanizer_mode") == 'essay' else PRICE_PER_UNIT
+                    refund_amount = round((failed_word_count / WORDS_PER_UNIT) * price, 2)
+                    if refund_amount > 0:
+                        user.wallet.balance += refund_amount
+                        db.session.add(Transaction(
+                            wallet_id=user.wallet.id,
+                            amount=refund_amount,
+                            transaction_type='refund',
+                            description=f'Partial refund for task {task.external_reference}'
+                        ))
+                        humanized_word_count = total_paragraph_word_count - failed_word_count
+                        task.diff_data['refund_info'] = f"{humanized_word_count}/{total_paragraph_word_count} words were humanized. KSh {refund_amount:.2f} has been refunded to your wallet."
+                        logger.info(f"Refunded KSh {refund_amount} to user {user.id} for {failed_word_count} failed words.")
 
-        logger.info(f"Task {task.external_reference} completed successfully.")
+            db.session.commit()
 
-    except (AllModelsFailedError, CustomApiError) as e:
-        logger.error(f"Critical failure for task {task.id}. Issuing full refund. Error: {e.message}", exc_info=True)
-        task.status = 'humanization_failed'
-        user = task.user
-        if user and user.wallet:
-            refund_amount = task.amount_charged
-            user.wallet.balance += refund_amount
-            db.session.add(Transaction(
-                wallet_id=user.wallet.id,
-                amount=refund_amount,
-                transaction_type='full_refund',
-                description=f'Full refund for failed task {task.external_reference}'
-            ))
-            task.error_message = "This task failed due to a critical error. A full refund has been issued to your wallet."
-            logger.info(f"Issued full refund of KSh {refund_amount} to user {user.id} for failed task.")
-
-    except Exception as e:
-        logger.error(f"Background processing for task {task.id} failed with an unexpected error: {e}", exc_info=True)
-        task.status = 'humanization_failed'
-        task.error_message = "An unexpected error occurred. Our team has been notified."
-    
-    finally:
-        db.session.commit()
+        except Exception as e:
+            logger.error(f"Humanization task {task_id} failed: {e}", exc_info=True)
+            db.session.rollback()
+            task = Task.query.get(task_id)
+            if task:
+                task.status = 'humanization_failed'
+                task.error_message = "An unexpected error occurred."
+                db.session.commit()
+        finally:
+            db.session.remove()
 
 
 @shared_task(bind=True)
 def process_playground_chat_task(self, task_id: int):
     """
     Celery task to process a playground chat message in the background.
-    Ensures full conversation memory and proper billing.
     """
-    task = Task.query.get(task_id)
-    if not task:
-        logger.error(f"[Playground Task ID: {task_id}] Task not found.")
-        return
+    with app.app_context():
+        task = Task.query.get(task_id)
+        if not task:
+            logger.error(f"[Playground Task ID: {task_id}] Task not found.")
+            return
 
-    try:
-        logger.info(f"[Playground Task ID: {task.id}] Processing playground task.")
-        task.status = 'processing'
-        db.session.commit()
+        try:
+            task.status = 'processing'
+            db.session.commit()
 
-        # --- Extract info ---
-        user_input_parts = task.diff_data.get('user_input_parts', [])
-        model_key = task.diff_data.get('model_key')
-        conversation_id = task.diff_data.get('conversation_id')
-        user = task.user
-        simple_user_input = " ".join(part.get("text", "") for part in user_input_parts)
+            task_data = task.diff_data or {}
+            conversation_id = task_data.get('conversation_id')
+            
+            if not conversation_id:
+                raise ValueError("conversation_id is missing from the task data.")
 
-        # --- Model config ---
-        models_config = current_app.config.get('MODELS', {})
-        model_info = models_config.get(model_key)
-        if not model_info:
-            raise Exception(f"Unknown model key: {model_key}")
-        
-        # --- MODIFICATION START: Robust Conversation Handling ---
-
-        # 1. Prepare system instructions and message history list
-        model_name = model_info.get('label', "AI Assistant")
-        system_instructions = (
-            "You are a helpful assistant. All code you provide must be enclosed in triple backticks. "
-            f"If a user asks for your name, you must respond that you are based on '{model_name}'."
-        )
-        message_history = [{"role": "system", "content": system_instructions}]
-        
-        # 2. Fetch existing conversation or create a new one
-        conversation = None
-        if conversation_id:
             conversation = Conversation.query.get(conversation_id)
+            if not conversation:
+                raise ValueError(f"Conversation {conversation_id} not found.")
 
-        if conversation:
-            # 3. If conversation exists, load its history
-            logger.info(f"Loading existing conversation ID: {conversation.id}")
-            for msg in conversation.messages:  # Assumes 'messages' relationship is ordered by timestamp
+            # --- Simplified Logic: The conversation and user message already exist ---
+            message_history = []
+            past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
+            
+            for msg in past_messages:
+                # Reconstruct simple text content for the AI model
                 if msg.role == 'user':
                     try:
-                        # Handle user content stored as a JSON string
+                        # User message content is now stored as full JSON from routes.py
                         content_parts = json.loads(msg.content)
-                        simple_content = " ".join(part.get("text", "") for part in content_parts)
+                        simple_content = " ".join(part.get("text", "") for part in content_parts if part.get("type") == "input_text")
                         message_history.append({"role": "user", "content": simple_content})
                     except (json.JSONDecodeError, TypeError):
+                         # Fallback for older, plain text messages if any exist
                         message_history.append({"role": "user", "content": msg.content})
                 elif msg.role == 'assistant':
                     message_history.append({"role": "assistant", "content": msg.content})
-        else:
-            # 4. If no conversation, create a new one
-            logger.info("No conversation ID provided, creating a new conversation.")
-            title = simple_user_input[:40] + '...' if len(simple_user_input) > 40 else simple_user_input
-            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
-            db.session.add(conversation)
-            db.session.commit() # Commit to get a valid conversation.id
 
-        # 5. Add the new user message to the history for the API call
-        message_history.append({"role": "user", "content": simple_user_input})
+            # --- Call OpenAI ---
+            model_key = task_data.get('model_key')
+            models_config = current_app.config.get('MODELS', {})
+            model_info = models_config.get(model_key)
+            if not model_info:
+                raise Exception(f"Unknown model key: {model_key}")
 
-        # --- MODIFICATION END ---
+            response = openai_client.chat.completions.create(
+                model=model_info['api_id'],
+                messages=message_history,
+            )
+            output_text = response.choices[0].message.content or ""
 
-        # --- Call OpenAI with the complete message history ---
-        response = openai_client.chat.completions.create(
-            model=model_info['api_id'],
-            messages=message_history,
-        )
-        output_text = response.choices[0].message.content or ""
+            # --- Billing Logic ---
+            user = task.user
+            price_per_word = model_info['price_per_word']
+            # We only bill for the AI's output words now
+            output_word_count = count_words(output_text)
+            total_cost = output_word_count * price_per_word
 
-        # --- Billing ---
-        price_per_word = model_info['price_per_word']
-        input_word_count = count_words(simple_user_input)
-        output_word_count = count_words(output_text)
-        total_word_count = input_word_count + output_word_count
-        total_cost = total_word_count * price_per_word
+            if user.wallet.balance < total_cost:
+                raise Exception("Insufficient funds detected during task execution.")
 
-        if not user.wallet or user.wallet.balance < total_cost:
-            raise Exception("Insufficient funds detected during task execution.")
+            user.wallet.balance -= total_cost
+            db.session.add(Transaction(
+                wallet_id=user.wallet.id,
+                amount=-total_cost,
+                transaction_type='playground_fee',
+                description=f"CONV-{conversation.id}: {output_word_count} words"
+            ))
 
-        user.wallet.balance -= total_cost
-        db.session.add(Transaction(
-            wallet_id=user.wallet.id,
-            amount=-total_cost,
-            transaction_type='playground_fee',
-            description=f"CONV-{conversation.id}: {total_word_count} words"
-        ))
+            # --- Save ONLY the assistant's response ---
+            db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
-        # --- Save the new messages to the database for the *next* turn ---
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='user', content=json.dumps(user_input_parts)))
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
+            # --- Finalize task ---
+            task.humanized_output = output_text
+            task.status = 'humanization_complete'
+            dd = dict(task.diff_data or {})
+            dd["final_conversation_id"] = conversation_id
+            task.diff_data = dd
+            db.session.commit()
 
-        # --- Finalize task ---
-        task.humanized_output = output_text
-        task.status = 'humanization_complete'
-        task.diff_data['final_conversation_id'] = conversation.id
-
-        db.session.commit()
-        return {'status': 'SUCCESS', 'result': output_text, 'conversation_id': conversation.id}
-
-    except Exception as e:
-        logger.error(f"Playground task {task.id} failed: {e}", exc_info=True)
-        task.status = 'humanization_failed'
-        task.error_message = "An error occurred while communicating with the AI model."
-        db.session.commit()
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
-        return {"status": "FAILURE", "error": "An unexpected error occurred. Please try again later."}
+        except Exception as e:
+            logger.error(f"Playground chat task {task_id} failed: {e}", exc_info=True)
+            # IMPORTANT: reset the failed transaction before updating the Task
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            # Re-fetch a clean instance before updating
+            task = Task.query.get(task_id)
+            if task:
+                task.status = 'humanization_failed'
+                task.error_message = "An error occurred while communicating with the AI model."
+                try:
+                    db.session.commit()
+                except Exception:
+                    logger.exception("Failed to commit failure status for task %s", task_id)
+        finally:
+            db.session.remove()
