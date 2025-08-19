@@ -238,7 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         addMessageActions(messageContainer, data.response);
                         showProcessing(false);
                         
-                        // --- NEW: Update conversation title in the list ---
                         if (data.conversation_title) {
                             const convItem = DOMElements.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
                             if (convItem) {
@@ -246,7 +245,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 if(titleSpan) titleSpan.textContent = data.conversation_title;
                             }
                         }
-                        // --- END ---
 
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
@@ -317,7 +315,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isNewConversation = !DOMElements.conversationIdInput.value;
                     DOMElements.conversationIdInput.value = data.conversation_id;
                     if (isNewConversation) {
-                        // Refresh the conversation list to show the new "New Chat" entry
                         await fetchConversations(); 
                     }
                 }
@@ -480,6 +477,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
                 }
                 document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.toggle('bg-gray-200', div.dataset.convId == convId));
+                
+                // --- CODEBLOCK FIX ---
+                highlightCodeBlocks();
+                // --- END FIX ---
+
                 if (window.innerWidth < 1024) toggleHistorySidebar();
             } catch (error) {
                 showAlert(error.message, 'danger');
@@ -843,15 +845,19 @@ document.addEventListener('DOMContentLoaded', () => {
             showProcessing: (message) => {
                 if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'none';
                 typeAnimation.stop();
-                const loadingHtml = `<div class="loading-in-output"><div class="spinner"></div><span class="mt-2">${message || "Processing..."}</span></div>`;
+                const loadingHtml = `<div id="loading-spinner" class="loading-in-output"><div class="spinner"></div><span class="mt-2">${message || "Processing..."}</span></div>`;
                 if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = loadingHtml;
                 if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = true;
             },
             hideProcessing: () => { if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false; },
             renderOutput: (data) => {
-                if(DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_text.replace(/\n/g, '<br>');
-                if(DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = data.humanized_text.trim().split(/\s+/).filter(Boolean).length;
-                if(DOMElements.copyBtn) DOMElements.copyBtn.style.display = 'block';
+                if (data.download_url) {
+                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = `<a href="${data.download_url}" class="download-link">Click here to download your document</a>`;
+                } else {
+                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_output.replace(/\n/g, '<br>');
+                }
+                if(DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = data.output_word_count;
+                if(DOMElements.copyBtn && !data.download_url) DOMElements.copyBtn.style.display = 'block';
             },
             openAnonymousPaymentModal: () => {
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
@@ -886,6 +892,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     UI.hideProcessing();
                 }
             },
+            
+            // --- SPINNER & CODEBLOCK FIX IS HERE ---
             checkStatus: async () => {
                 if (!AppState.transactionId) return;
                 try {
@@ -906,19 +914,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     AppState.pollingRetries = 0;
                     
                     const data = await response.json();
-                    if (data.status === 'completed' || data.status === 'humanization_complete') {
+
+                    if (data.status === 'complete' || data.status === 'download_ready') {
                         Actions.stopPolling();
                         UI.renderOutput(data);
-                        UI.showAlert('Task complete!', 'success');
-                    } else if (data.status === 'failed') {
+                        if (data.diff_data && data.diff_data.refund_info) {
+                            UI.showAlert(data.diff_data.refund_info, 'info');
+                        } else {
+                            UI.showAlert('Task complete!', 'success');
+                        }
+                    } else if (data.status === 'humanization_failed') {
                         Actions.stopPolling();
-                        UI.showAlert(data.error_message || 'Processing failed.', 'danger');
+                        UI.resetSelections();
+                        UI.showAlert(data.message || 'Processing failed. A full refund has been issued.', 'danger');
                     }
                 } catch (error) {
                     Actions.stopPolling();
                     UI.showAlert(error.message || 'Error checking status.', 'danger');
                 }
             },
+            // --- END OF FIX ---
+
             startPolling: () => {
                 if (AppState.isPolling) return;
                 AppState.pollingRetries = 0;
