@@ -97,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //== PLAYGROUND LOGIC
     //======================================================================
     function initializePlayground() {
-        let currentConversationId = null;
         let alertTimeout = null;
         const ALERT_DURATION = 5000;
         let isFetchingHistory = false;
@@ -130,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
             playgroundWelcomeHeader: document.getElementById('playground-welcome-header'),
             playgroundContainer: document.getElementById('playground-container'),
             dropZone: document.getElementById('drop-zone'),
+            conversationIdInput: document.getElementById('conversation-id-storage'),
         };
 
         const sidebarOverlay = document.createElement('div');
@@ -159,13 +159,11 @@ document.addEventListener('DOMContentLoaded', () => {
                const block = preElement.querySelector('code');
                if (!block) return;
        
-               // Highlight the code block if it hasn't been already
                if (!block.hasAttribute('data-highlighted')) {
                    hljs.highlightElement(block);
                    block.setAttribute('data-highlighted', 'true');
                }
        
-               // Add a copy button if one doesn't already exist
                if (!preElement.querySelector('.code-copy-btn')) {
                    const copyBtn = document.createElement('button');
                    copyBtn.className = 'code-copy-btn';
@@ -187,7 +185,6 @@ document.addEventListener('DOMContentLoaded', () => {
                        });
                    });
        
-                   // Add the button to the top of the <pre> block
                    preElement.prepend(copyBtn);
                }
            });
@@ -239,19 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         messageBubble.innerHTML = markdownToHtml(data.response);
                         highlightCodeBlocks();
                         addMessageActions(messageContainer, data.response);
-
-                        // ✅ START: MODIFIED CODE BLOCK
-                        if (data.conversation_id) {
-                            const isNewConversation = !currentConversationId;
-                            // Always trust the conversation ID from the backend to prevent state loss.
-                            currentConversationId = data.conversation_id;
-                            // Only refresh the sidebar if it's a brand new chat.
-                            if (isNewConversation) {
-                                await fetchConversations();
-                            }
-                        }
-                        // ✅ END: MODIFIED CODE BLOCK
-                        
                         showProcessing(false);
                     } else if (data.status === 'failed') {
                         clearInterval(pollingInterval);
@@ -270,6 +254,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!DOMElements.promptInput) return;
             const prompt = DOMElements.promptInput.value.trim();
             if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
+            
+            const currentConversationId = DOMElements.conversationIdInput.value;
+
             if (!currentConversationId && DOMElements.modelSelectionBar) {
                 DOMElements.modelSelectionBar.style.display = 'none';
             }
@@ -291,10 +278,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
             }
             addMessageToLog('user', displayMessage);
+            
             DOMElements.promptInput.value = '';
-            showProcessing(true);
             attachedFiles = [];
             renderAttachedFiles();
+
+            showProcessing(true);
             const thinkingPlaceholder = `<div class="flex items-center gap-x-2"><div class="spinner !w-5 !h-5"></div><span>Thinking...</span></div>`;
             const { messageContainer, messageBubble } = addMessageToLog('bot', thinkingPlaceholder, false);
             try {
@@ -312,6 +301,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
+
+                // --- FIX: Handle the immediate conversation_id from the response ---
+                if (data.conversation_id) {
+                    const isNewConversation = !DOMElements.conversationIdInput.value;
+                    DOMElements.conversationIdInput.value = data.conversation_id;
+                    if (isNewConversation) {
+                        await fetchConversations();
+                    }
+                }
+                // --- END OF FIX ---
+
                 if (data.status === 'processing_started' && data.task_id) {
                     pollForTaskResult(data.task_id, messageContainer, messageBubble);
                 } else {
@@ -440,7 +440,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error('Failed to load conversation.');
                 const messages = await response.json();
                 if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
-                currentConversationId = convId;
+                
+                DOMElements.conversationIdInput.value = convId;
+
                 if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
                 messages.forEach(msg => {
                     let content = msg.content;
@@ -481,7 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error('Failed to delete.');
                 showAlert('Conversation deleted.', 'success');
                 fetchConversations(DOMElements.searchHistoryInput.value, 1);
-                if (currentConversationId === convId) startNewChat();
+                if (DOMElements.conversationIdInput.value === convId) startNewChat();
             } catch (error) {
                 showAlert(error.message, 'danger');
             }
@@ -557,14 +559,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const startNewChat = () => {
             clearInterval(pollingInterval);
-            currentConversationId = null;
+            if (DOMElements.conversationIdInput) DOMElements.conversationIdInput.value = '';
+            
             attachedFiles = [];
             renderAttachedFiles();
             if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
             if (DOMElements.promptInput) DOMElements.promptInput.value = '';
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
            
-            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false); // No buttons for greeting
+            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false);
 
             isChatActive = false;
             if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
@@ -582,6 +585,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch('/api/get-models');
                 if (!response.ok) throw new Error('Failed to load models.');
                 const models = await response.json();
+
+                if (!models || models.length === 0) {
+                    showAlert('Could not load any AI models. Please contact support.', 'danger');
+                    return; 
+                }
+
                 if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.innerHTML = '';
                 const selectedModel = models.find(m => m.selected) || models[0];
                 models.forEach(model => {
@@ -654,7 +663,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //== HUMANIZER LOGIC
     //======================================================================
     function initializeHumanizer() {
-        // ... (This entire section is unchanged and remains fully functional)
         const AppState = {
             isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
             pollingInterval: null,
