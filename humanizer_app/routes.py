@@ -522,6 +522,7 @@ def download_formatted_doc(transaction_id):
     flash("Failed to generate the document.", "danger")
     return redirect(url_for('main.home'))
 
+# --- CORRECTED view_task_details function ---
 @main_bp.route("/task/details/<transaction_id>")
 @auth_required
 def view_task_details(transaction_id):
@@ -532,27 +533,21 @@ def view_task_details(transaction_id):
         logger.warning(f"User {user.id} attempting to access unauthorized task {task.id}.")
         abort(403)
 
-    html_output = "Error: Could not render task output."
     diff_data = task.diff_data or {}
-    logger.debug(f"Task {task.id} diff_data loaded: {diff_data}")
+    output_format = diff_data.get('output_format', 'plain_text')
 
+    if task.status != 'humanization_complete':
+        flash("This task is not yet complete.", "danger")
+        return redirect(request.referrer or url_for('main.transaction_history'))
+
+    # If the output is not plain text, it must be a downloadable document.
+    if output_format != 'plain_text':
+        return redirect(url_for('main.download_formatted_doc', transaction_id=task.external_reference))
+
+    # --- Logic for displaying plain text diff remains the same ---
+    html_output = "Error: Could not render task output."
     try:
-        if task.status != 'humanization_complete':
-            logger.warning(f"Task {task.id} is not complete. Status is '{task.status}'. Redirecting.")
-            flash("This task is not yet complete.", "danger")
-            return redirect(request.referrer or url_for('main.home'))
-
-        output_format = diff_data.get('output_format')
-        logger.debug(f"Task {task.id} output_format is '{output_format}'.")
-
-        if output_format != 'plain_text':
-            logger.warning(f"Task {task.id} has a non-HTML output format ('{output_format}'). Redirecting.")
-            flash("This task result is not available for HTML viewing.", "danger")
-            return redirect(request.referrer or url_for('main.home'))
-
         word_diff = diff_data.get('word_diff')
-        logger.debug(f"Task {task.id} word_diff data: {word_diff}")
-
         if isinstance(word_diff, list):
             final_html_parts = []
             current_paragraph_spans = []
@@ -561,9 +556,8 @@ def view_task_details(transaction_id):
                 text_segment = d.get("text", "")
                 diff_type = d.get("type", "equal")
                 css_class = "word-added" if diff_type == "added" else "word-equal"
-
                 parts = text_segment.split("[[PARAGRAPH_BREAK]]")
-
+                
                 if parts[0].strip():
                     current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
 
@@ -571,39 +565,30 @@ def view_task_details(transaction_id):
                     for i in range(1, len(parts)):
                         if current_paragraph_spans:
                             final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-
                         current_paragraph_spans = []
                         if parts[i].strip():
                             current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
 
             if current_paragraph_spans:
                 final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-
+            
             html_output = "".join(final_html_parts)
-            logger.info("Successfully generated HTML from word_diff with robust paragraph construction.")
         elif task.humanized_output:
-            logger.info(f"Task {task.id} has no word_diff, falling back to raw humanized_output.")
             paragraphs = task.humanized_output.split('\n\n')
-            final_paragraphs = []
-            for p in paragraphs:
-                p_with_br = p.replace("\n", "<br>")
-                final_paragraphs.append(f'<p style="text-indent: 0;">{p_with_br}</p>')
+            final_paragraphs = [f'<p style="text-indent: 0;">{p.replace("\n", "<br>")}</p>' for p in paragraphs]
             html_output = "".join(final_paragraphs)
-
         else:
-            logger.error(f"Task {task.id} has no word_diff and no humanized_output.")
             html_output = "Error: No output data found for this task."
 
     except Exception as e:
         logger.error(f"FATAL: Could not render HTML for task {transaction_id}. Error: {e}", exc_info=True)
         flash("An unexpected error occurred while trying to display this task.", "danger")
-        return redirect(request.referrer or url_for('main.home'))
+        return redirect(request.referrer or url_for('main.transaction_history'))
 
     username = get_display_name(user)
     back_url = url_for('main.transaction_history')
     humanizer_mode = diff_data.get('humanizer_mode', 'N/A').replace('_', ' ').title()
 
-    logger.info(f"--- Rendering template 'view_task.html' for task {transaction_id} ---")
     return render_template("view_task.html", task=task, username=username, html_output=html_output, back_url=back_url, humanizer_mode=humanizer_mode)
 
 @main_bp.route("/instructions")
