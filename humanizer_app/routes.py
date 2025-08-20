@@ -211,21 +211,21 @@ def playground_chat():
     input_parts = data.get('input', [])
     model_key = data.get('model')
     conversation_id = data.get('conversation_id')
+    internet_search_enabled = data.get('internet_search_enabled', False)
 
     if not isinstance(input_parts, list) or not input_parts:
         return jsonify({"error": "No input provided."}), 400
 
-    # --- ADVANCED INTERNET SEARCH LOGIC ---
-    user_prompt_text = ""
-    text_part_index = -1
-    for i, part in enumerate(input_parts):
-        if part.get("type") == "input_text":
-            user_prompt_text = part.get("text", "").strip()
-            text_part_index = i
-            break
-
-    if user_prompt_text.lower().startswith('/search '):
-        search_query = user_prompt_text[8:]
+    if internet_search_enabled:
+        user_prompt_text = ""
+        text_part_index = -1
+        for i, part in enumerate(input_parts):
+            if part.get("type") == "input_text":
+                user_prompt_text = part.get("text", "").strip()
+                text_part_index = i
+                break
+        
+        search_query = user_prompt_text
         try:
             search_results = list(google_search(search_query, num_results=3, sleep_interval=2))
             
@@ -233,16 +233,13 @@ def playground_chat():
                 top_url = search_results[0]
                 verbatim_snippet = ""
                 
-                # Fetch and parse the content of the top URL
                 try:
                     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
                     response = requests.get(top_url, timeout=10, headers=headers)
-                    response.raise_for_status() # Raise an exception for bad status codes
+                    response.raise_for_status()
                     
                     soup = BeautifulSoup(response.content, 'html.parser')
                     paragraphs = soup.find_all('p')
-                    
-                    # Extract text from the first 5 paragraphs to form the snippet
                     snippet_parts = [p.get_text() for p in paragraphs[:5]]
                     verbatim_snippet = "\n".join(snippet_parts).strip()
 
@@ -253,11 +250,8 @@ def playground_chat():
                     logger.error(f"Error parsing content from {top_url}: {e}")
                     verbatim_snippet = "Could not parse content from the source."
 
-                # Construct the new, detailed prompt for the AI
                 if text_part_index != -1:
                     original_prompt = input_parts[text_part_index]['text']
-                    
-                    # Create the final prompt with clear instructions
                     final_prompt = (
                         f"Please answer the user's query based on the provided search result.\n"
                         f"Your response should be structured in two parts:\n"
@@ -272,7 +266,6 @@ def playground_chat():
         except Exception as e:
             logger.error(f"Internet search failed for query '{search_query}': {e}", exc_info=True)
             pass
-    # --- END OF UPDATED LOGIC ---
 
     try:
         if conversation_id:
