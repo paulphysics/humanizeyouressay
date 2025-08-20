@@ -201,3 +201,8 @@ pre:hover .code-copy-btn {
 #model-selector-options.options-visible {
     display: block;
 }
+
+#internet-search-toggle.search-active {
+    background-color: #e0e7ff; /* Tailwind's indigo-100 */
+    color: #4f46e5; /* Tailwind's indigo-600 */
+}
