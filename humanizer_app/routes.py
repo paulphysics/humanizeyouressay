@@ -801,3 +801,24 @@ def extract_text_from_file():
         return jsonify({"error": "Failed to process file. It may be corrupt or in an unsupported format."}), 500
 
     return jsonify({"error": "File could not be processed."}), 500
+
+@main_bp.route('/conversations/clear_all', methods=['POST'])
+@auth_required
+def clear_all_conversations():
+    """
+    Deletes all conversation history for the currently logged-in user.
+    """
+    try:
+        user = User.query.get_or_404(session['user']['uid'])
+        
+        # This assumes your database is set up to cascade deletes from conversations
+        # to their messages, which is typical and matches your delete_conversation route.
+        Conversation.query.filter_by(user_id=user.id).delete()
+        
+        db.session.commit()
+        
+        return jsonify({'message': 'All conversations cleared successfully.'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error clearing all conversations for user {user.id}: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred while clearing history.'}), 500
