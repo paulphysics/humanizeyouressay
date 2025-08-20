@@ -811,9 +811,15 @@ def clear_all_conversations():
     try:
         user = User.query.get_or_404(session['user']['uid'])
         
-        # This assumes your database is set up to cascade deletes from conversations
-        # to their messages, which is typical and matches your delete_conversation route.
-        Conversation.query.filter_by(user_id=user.id).delete()
+        # Get all conversation IDs for the current user
+        conversation_ids = [conv.id for conv in Conversation.query.filter_by(user_id=user.id).all()]
+
+        if conversation_ids:
+            # Step 1: Delete all chat messages associated with those conversations
+            ChatMessage.query.filter(ChatMessage.conversation_id.in_(conversation_ids)).delete(synchronize_session=False)
+            
+            # Step 2: Now, delete the conversations themselves
+            Conversation.query.filter_by(user_id=user.id).delete(synchronize_session=False)
         
         db.session.commit()
         
