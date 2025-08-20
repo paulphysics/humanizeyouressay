@@ -32,8 +32,12 @@
                             {{ transaction.display_title }}
                         </td>
                         <td class="py-3 px-4">
-                            {{ transaction.transaction_type.replace('_', ' ')|title }}
-                        </td>
+                            {% if transaction.transaction_type == 'humanize_fee' %}
+                                Humanize/Formatting Fee
+                            {% else %}
+                                {{ transaction.transaction_type.replace('_', ' ')|title }}
+                            {% endif %}
+                            </td>
                         <td class="py-3 px-4 text-right">
                             <span class="font-semibold {% if transaction.amount > 0 %}text-green-600{% else %}text-red-600{% endif %}">
                                 {{ "%.2f"|format(transaction.amount) }}
@@ -48,7 +52,7 @@
                             {% else %}
                                 <span class="text-gray-400">N/A</span>
                             {% endif %}
-                            </td>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
