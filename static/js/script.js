@@ -130,6 +130,8 @@ document.addEventListener('DOMContentLoaded', () => {
             playgroundContainer: document.getElementById('playground-container'),
             dropZone: document.getElementById('drop-zone'),
             conversationIdInput: document.getElementById('conversation-id-storage'),
+            // ** ADDED ELEMENT **
+            clearHistoryBtn: document.getElementById('clear-history-btn'),
         };
 
         const sidebarOverlay = document.createElement('div');
@@ -509,6 +511,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // ** NEW FUNCTION **
+        const clearAllConversations = async () => {
+            if (confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
+                try {
+                    const response = await fetch('/conversations/clear_all', { 
+                        method: 'POST' 
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to clear history.');
+                    }
+                    showAlert('All conversations have been cleared.', 'success');
+                    fetchConversations(); // Refresh the conversation list
+                    startNewChat();     // Go to a new chat screen
+                } catch (error) {
+                    showAlert(error.message, 'danger');
+                }
+            }
+        };
+
         const renderPagination = (totalPages, currentPage) => {
             if (!DOMElements.paginationContainer) return;
             DOMElements.paginationContainer.innerHTML = '';
@@ -641,6 +663,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (DOMElements.generateBtn) DOMElements.generateBtn.addEventListener('click', handleGenerate);
         if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
         if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
+        // ** ADDED EVENT LISTENER **
+        if (DOMElements.clearHistoryBtn) DOMElements.clearHistoryBtn.addEventListener('click', clearAllConversations);
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleHistorySidebar);
         if (DOMElements.searchHistoryInput) {
             let searchTimeout;
