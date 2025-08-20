@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'application/pdf', 
                     'text/plain', 
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'application/zip' // <-- This line is added
+                    'application/zip'
                 ];
                 let fileData = { name: file.name, type: file.type, size: file.size, data: null };
                 if (allowedImageTypes.includes(file.type)) {
@@ -381,7 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         reader.readAsDataURL(file);
                     });
                     attachedFiles.push(fileData);
-                } else if (allowedTextFiles.includes(file.type) || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx')) {
+                // --- FIX: Add a check for .zip extension ---
+                } else if (allowedTextFiles.includes(file.type) || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.zip')) {
+                // --- END FIX ---
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
