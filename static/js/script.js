@@ -366,14 +366,19 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert('Processing attachments...', 'info');
             for (const file of fileList) {
                 const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-                // --- MODIFICATION: Add zip files to the allowed list ---
-                const allowedTextFiles = [
+                // --- CORRECTED LOGIC for ZIP files ---
+                const allowedDocTypes = [
                     'application/pdf', 
                     'text/plain', 
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'application/zip'
+                    'application/zip', // Standard ZIP MIME type
+                    'application/x-zip-compressed' // Common alternative for ZIP
                 ];
+                const allowedDocExtensions = ['pdf', 'docx', 'txt', 'zip'];
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                
                 let fileData = { name: file.name, type: file.type, size: file.size, data: null };
+
                 if (allowedImageTypes.includes(file.type)) {
                     fileData.data = await new Promise((resolve) => {
                         const reader = new FileReader();
@@ -381,9 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         reader.readAsDataURL(file);
                     });
                     attachedFiles.push(fileData);
-                // --- FIX: Add a check for .zip extension ---
-                } else if (allowedTextFiles.includes(file.type) || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.zip')) {
-                // --- END FIX ---
+                } else if (allowedDocTypes.includes(file.type) || allowedDocExtensions.includes(fileExt)) {
+                // --- END CORRECTION ---
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
