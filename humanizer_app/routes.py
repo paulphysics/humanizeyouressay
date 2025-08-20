@@ -39,22 +39,31 @@ WHATSAPP_NUMBER = "254712345678"
 MAX_WORDS = 1925
 NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
 
-# --- Security: Whitelist for initial uploads ---
+# --- Security: Whitelist for allowed initial uploads ---
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'txt'}
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# --- Security: Blocklist for executable/dangerous files ---
+BLOCKED_EXTENSIONS = {
+    'exe', 'dll', 'so', 'bat', 'sh', 'ps1', 'vbs', 'msi', 'jar', 'cmd', 'scr'
+}
+
+def is_extension_allowed(filename):
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    if ext in BLOCKED_EXTENSIONS:
+        return False # Explicitly blocked
+    if ext in ALLOWED_EXTENSIONS:
+        return True # Explicitly allowed for direct upload
+    return False # Default to not allowed for direct upload
 
 # --- Security: Rate Limiting ---
 def check_rate_limit(limit=10, per=timedelta(minutes=1)):
     now = time.time()
     uploads = session.get('upload_timestamps', [])
     recent_uploads = [ts for ts in uploads if now - ts < per.total_seconds()]
-
     if len(recent_uploads) >= limit:
         return False
-
     recent_uploads.append(now)
     session['upload_timestamps'] = recent_uploads
     return True
@@ -79,6 +88,10 @@ def index():
         if not user:
             session.clear()
             return redirect(url_for('main.index'))
+        
+        if user.is_admin:
+            return redirect(url_for('admin_dashboard.dashboard'))
+        
         return redirect(url_for('main.playground'))
     else:
         firebase_config = {
@@ -697,30 +710,84 @@ def delete_conversation(conv_id):
 @main_bp.route('/extract_text_from_file', methods=['POST'])
 @auth_required
 def extract_text_from_file():
+    if not check_rate_limit():
+        return jsonify({"error": "You are uploading too frequently. Please wait a moment."}), 429
+
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
-    extracted_text = ""
-    try:
-        if file.filename.lower().endswith('.docx'):
-            doc = docx.Document(io.BytesIO(file.read()))
-            for para in doc.paragraphs:
-                extracted_text += para.text + "\n"
-        
-        elif file.filename.lower().endswith('.pdf'):
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
-            for page in pdf_reader.pages:
-                extracted_text += page.extract_text() + "\n"
-        
-        else:
-            return jsonify({"error": "Unsupported file type"}), 400
-            
-    except Exception as e:
-        logger.error(f"Error processing file {file.filename}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to process file."}), 500
+    if not is_extension_allowed(file.filename):
+        return jsonify({"error": "This file type is not supported or is blocked for security reasons."}), 400
 
-    return jsonify({"text": extracted_text})
+    filename = secure_filename(file.filename)
+    file_bytes = file.read()
+    file.seek(0)
+
+    try:
+        if filename.lower().endswith('.zip'):
+            combined_text = f"--- Contents of {filename} ---\n\n"
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                # Scan for blocked files inside the ZIP first
+                for file_info in z.infolist():
+                    if '.' in file_info.filename and file_info.filename.rsplit('.', 1)[1].lower() in BLOCKED_EXTENSIONS:
+                        ext = file_info.filename.rsplit('.', 1)[1].lower()
+                        return jsonify({"error": f"Upload failed. Executable file type (.{ext}) found inside ZIP."}), 400
+
+                # If scan passes, proceed with extraction
+                for file_info in z.infolist():
+                    if file_info.is_dir():
+                        continue
+                    with z.open(file_info) as f:
+                        file_content_bytes = f.read()
+                        doc_text = f"\n--- File: {file_info.filename} ---\n"
+
+                        if file_info.filename.lower().endswith('.docx'):
+                            if b"EncryptedPackage" in file_content_bytes:
+                                doc_text += "[File is encrypted and cannot be read]\n"
+                            else:
+                                doc = docx.Document(io.BytesIO(file_content_bytes))
+                                doc_text += "".join(p.text + "\n" for p in doc.paragraphs)
+
+                        elif file_info.filename.lower().endswith('.pdf'):
+                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content_bytes))
+                            if pdf_reader.is_encrypted:
+                                doc_text += "[File is encrypted and cannot be read]\n"
+                            else:
+                                doc_text += "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
+
+                        else: # For all other non-blocked files, including code, treat them as plain text
+                            doc_text += file_content_bytes.decode('utf-8', errors='ignore')
+
+                        combined_text += doc_text
+            return jsonify({"text": combined_text})
+
+        elif filename.lower().endswith('.docx'):
+            if b"EncryptedPackage" in file_bytes:
+                return jsonify({"error": "This DOCX file is encrypted and cannot be processed."}), 400
+            doc = docx.Document(io.BytesIO(file_bytes))
+            extracted_text = "".join(p.text + "\n" for p in doc.paragraphs)
+            return jsonify({"text": extracted_text})
+
+        elif filename.lower().endswith('.pdf'):
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+            if pdf_reader.is_encrypted:
+                return jsonify({"error": "This PDF file is encrypted and cannot be processed."}), 400
+            extracted_text = "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
+            return jsonify({"text": extracted_text})
+
+        elif filename.lower().endswith('.txt'):
+            extracted_text = file_bytes.decode('utf-8', errors='ignore')
+            return jsonify({"text": extracted_text})
+
+        elif filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'webp', 'gif'}:
+            return jsonify({"text": f"[Image '{filename}' attached]"})
+
+    except Exception as e:
+        logger.error(f"Error processing file {filename}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to process file. It may be corrupt or in an unsupported format."}), 500
+
+    return jsonify({"error": "File could not be processed."}), 500
