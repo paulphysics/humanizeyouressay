@@ -352,18 +352,17 @@ pre:hover .code-copy-btn {
 /* =============================================== */
 /* == Specificity Fix for Cost/Word Count Color == */
 /* =============================================== */
-
 /*
-  This makes the color utilities win against the grey
-  placeholder color by increasing their specificity.
+  This forces the green and indigo colors to be more
+  important than the grey placeholder color.
 */
 
-.popup-trigger .text-green-600 {
+.popup-trigger.text-green-600 {
     --tw-text-opacity: 1;
     color: rgb(22 163 74 / var(--tw-text-opacity, 1));
 }
 
-.popup-trigger .text-indigo-600 {
+.popup-trigger.text-indigo-600 {
     --tw-text-opacity: 1;
     color: rgb(79 70 229 / var(--tw-text-opacity, 1));
 }
