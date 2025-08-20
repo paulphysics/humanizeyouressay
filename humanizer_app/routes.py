@@ -52,10 +52,10 @@ def is_extension_allowed(filename):
         return False
     ext = filename.rsplit('.', 1)[1].lower()
     if ext in BLOCKED_EXTENSIONS:
-        return False # Explicitly blocked
+        return False
     if ext in ALLOWED_EXTENSIONS:
-        return True # Explicitly allowed for direct upload
-    return False # Default to not allowed for direct upload
+        return True
+    return False
 
 # --- Security: Rate Limiting ---
 def check_rate_limit(limit=10, per=timedelta(minutes=1)):
@@ -270,9 +270,7 @@ def get_playground_task_status(task_id):
 
     if task.status == 'humanization_complete':
         final_conversation_id = (task.diff_data or {}).get("final_conversation_id")
-
         conversation = Conversation.query.get(final_conversation_id) if final_conversation_id else None
-
         return jsonify({
             "status": "complete",
             "response": task.humanized_output,
@@ -306,9 +304,7 @@ def playground():
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
     wallet_balance = user.wallet.balance if user.wallet else 0
-
     models = current_app.config['MODELS']
-
     return render_template(
         "playground.html",
         user=user,
@@ -481,20 +477,58 @@ def payhero_callback():
                 logger.info(f"Anonymous task {task.id} payment failed.")
     return jsonify({'status': 'success'}), 200
 
+# --- MODIFIED get_humanization_status function ---
 @main_bp.route("/get_humanization_status/<transaction_id>", methods=["GET"])
 def get_humanization_status(transaction_id):
     task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
     if task.user_id and ('user' not in session or task.user_id != session['user']['uid']):
         abort(403)
-    response = {"status": task.status, "message": task.error_message or "Processing..."}
+    
+    response_data = {"status": task.status, "message": task.error_message or "Processing..."}
+
     if task.status == 'humanization_complete':
         diff_data = task.diff_data or {}
         output_format = diff_data.get("output_format", "plain_text")
+        
         if output_format != 'plain_text':
-            response.update({"status": "download_ready", "download_url": url_for('main.download_formatted_doc', transaction_id=task.external_reference)})
+            response_data.update({
+                "status": "download_ready", 
+                "download_url": url_for('main.download_formatted_doc', transaction_id=task.external_reference)
+            })
         else:
-            response.update({"status": "complete", "humanized_output": task.humanized_output, "output_word_count": task.output_word_count, "diff_data": diff_data})
-    return jsonify(response)
+            # Generate the highlighted HTML for the main page view
+            word_diff = diff_data.get('word_diff')
+            html_output = ""
+            if isinstance(word_diff, list):
+                final_html_parts = []
+                current_paragraph_spans = []
+                for d in word_diff:
+                    text_segment = d.get("text", "")
+                    css_class = "word-added" if d.get("type") == "added" else "word-equal"
+                    parts = text_segment.split("[[PARAGRAPH_BREAK]]")
+                    if parts[0].strip():
+                        current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
+                    if len(parts) > 1:
+                        for i in range(1, len(parts)):
+                            if current_paragraph_spans:
+                                final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
+                            current_paragraph_spans = []
+                            if parts[i].strip():
+                                current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
+                if current_paragraph_spans:
+                    final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
+                html_output = "".join(final_html_parts)
+            else:
+                html_output = task.humanized_output.replace('\n', '<br>')
+
+            response_data.update({
+                "status": "complete", 
+                "humanized_output": html_output, # Send the rich HTML
+                "output_word_count": task.output_word_count, 
+                "diff_data": diff_data
+            })
+            
+    return jsonify(response_data)
 
 @main_bp.route("/download_formatted_doc/<transaction_id>", methods=["GET"])
 def download_formatted_doc(transaction_id):
@@ -548,16 +582,12 @@ def view_task_details(transaction_id):
         if isinstance(word_diff, list):
             final_html_parts = []
             current_paragraph_spans = []
-
             for d in word_diff:
                 text_segment = d.get("text", "")
-                diff_type = d.get("type", "equal")
-                css_class = "word-added" if diff_type == "added" else "word-equal"
+                css_class = "word-added" if d.get("type") == "added" else "word-equal"
                 parts = text_segment.split("[[PARAGRAPH_BREAK]]")
-                
                 if parts[0].strip():
                     current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
-
                 if len(parts) > 1:
                     for i in range(1, len(parts)):
                         if current_paragraph_spans:
@@ -565,16 +595,12 @@ def view_task_details(transaction_id):
                         current_paragraph_spans = []
                         if parts[i].strip():
                             current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
-
             if current_paragraph_spans:
                 final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-            
             html_output = "".join(final_html_parts)
         elif task.humanized_output:
             paragraphs = task.humanized_output.split('\n\n')
-            # --- SYNTAX ERROR FIX ---
             final_paragraphs = [f'<p style="text-indent: 0;">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs]
-            # --- END FIX ---
             html_output = "".join(final_paragraphs)
         else:
             html_output = "Error: No output data found for this task."
