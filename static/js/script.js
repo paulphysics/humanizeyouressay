@@ -366,7 +366,13 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert('Processing attachments...', 'info');
             for (const file of fileList) {
                 const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-                const allowedTextFiles = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                // --- MODIFICATION: Add zip files to the allowed list ---
+                const allowedTextFiles = [
+                    'application/pdf', 
+                    'text/plain', 
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/zip' // <-- This line is added
+                ];
                 let fileData = { name: file.name, type: file.type, size: file.size, data: null };
                 if (allowedImageTypes.includes(file.type)) {
                     fileData.data = await new Promise((resolve) => {
@@ -478,9 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.toggle('bg-gray-200', div.dataset.convId == convId));
                 
-                // --- CODEBLOCK FIX ---
                 highlightCodeBlocks();
-                // --- END FIX ---
 
                 if (window.innerWidth < 1024) toggleHistorySidebar();
             } catch (error) {
@@ -893,7 +897,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             },
             
-            // --- SPINNER & CODEBLOCK FIX IS HERE ---
             checkStatus: async () => {
                 if (!AppState.transactionId) return;
                 try {
@@ -933,7 +936,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     UI.showAlert(error.message || 'Error checking status.', 'danger');
                 }
             },
-            // --- END OF FIX ---
 
             startPolling: () => {
                 if (AppState.isPolling) return;
