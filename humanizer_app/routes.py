@@ -8,9 +8,12 @@ import re
 import json
 import threading
 import logging
+import time # <-- Added for rate limiting
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
                    redirect, url_for, flash, current_app, session, abort)
+from werkzeug.utils import secure_filename # <-- Added for security
+import zipfile # <-- Added for zip file processing
 from werkzeug.exceptions import RequestEntityTooLarge 
 from sqlalchemy import desc, or_
 import pytz
@@ -36,6 +39,33 @@ WHATSAPP_NUMBER = "254712345678"
 MAX_WORDS = 1925
 NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
 
+# --- NEW: Security Feature 1: Strict File Type Whitelisting ---
+ALLOWED_EXTENSIONS = {'pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- NEW: Security Feature 2: Rate Limiting ---
+def check_rate_limit(limit=10, per=timedelta(minutes=1)):
+    """
+    Checks if the current user has exceeded upload limits.
+    Uses the session to track upload timestamps.
+    """
+    now = time.time()
+    uploads = session.get('upload_timestamps', [])
+    
+    # Filter out timestamps older than the time window
+    recent_uploads = [ts for ts in uploads if now - ts < per.total_seconds()]
+    
+    if len(recent_uploads) >= limit:
+        return False # Limit exceeded
+        
+    recent_uploads.append(now)
+    session['upload_timestamps'] = recent_uploads
+    return True # OK
+
+
 def sanitize_filename(filename):
     if not filename:
         return "document"
@@ -56,10 +86,8 @@ def index():
     Renders the appropriate page based on login status and user role.
     """
     if 'user' in session:
-        # Gracefully handle cases where the user ID in the session is no longer valid.
         user = User.query.get(session['user']['uid'])
         if not user:
-            # If user not found, the session is invalid. Clear it and redirect.
             session.clear()
             return redirect(url_for('main.index'))
 
@@ -68,7 +96,6 @@ def index():
         
         return redirect(url_for('main.playground'))
     else:
-        # This part for non-logged-in users remains the same
         firebase_config = {
             "apiKey": os.getenv("FIREBASE_API_KEY"), "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
             "projectId": os.getenv("FIREBASE_PROJECT_ID"), "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
@@ -154,24 +181,18 @@ def transaction_history():
 
         elif t.transaction_type == 'playground_fee' and t.description and t.description.startswith('CONV-'):
             try:
-                # Extracts 'CONV-266' from 'CONV-266: 15 words'
                 conv_id_part = t.description.split(':')[0]
                 conv_id_str = conv_id_part.split('-')[1]
                 conv_id = int(conv_id_str)
                 
-                # Fetch the conversation from the database
                 conversation = Conversation.query.get(conv_id)
                 
-                # Check if the conversation and its title exist
                 if conversation and conversation.title:
-                    # Format the display string as requested: "CONV-266: 15 words - Introducing Freder"
                     t.display_title = f"{t.description} - {conversation.title}"
                 else:
-                    # If there's no title, just show the original description
                     t.display_title = t.description
             except (IndexError, ValueError):
-                # Fallback if parsing the description fails
-                pass # The display_title is already set to the description by default
+                pass
 
     username = get_display_name(user)
     return render_template("transaction_history.html", 
@@ -195,11 +216,9 @@ def playground_chat():
         return jsonify({"error": "No input provided."}), 400
 
     try:
-        # 1) Create or load a conversation synchronously so the UI gets a stable ID
         if conversation_id:
             conversation = Conversation.query.filter_by(id=conversation_id, user_id=user.id).first_or_404()
         else:
-            # Title from first text chunk (fallback if empty)
             raw_title = " ".join(
                 p.get("text", "").strip()
                 for p in input_parts
@@ -208,17 +227,15 @@ def playground_chat():
             title = (raw_title[:60] or "New chat")
             conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
             db.session.add(conversation)
-            db.session.flush()  # get conversation.id without a separate transaction
+            db.session.flush()
             conversation_id = conversation.id
 
-        # 2) Persist the user's message now, so history exists for the worker
         db.session.add(ChatMessage(
             conversation_id=conversation_id,
             role="user",
             content=json.dumps(input_parts)
         ))
 
-        # 3) Create the Task and enqueue the worker
         task_ref = f"PLAYGROUND-{uuid.uuid4()}"
         task_data = {
             "user_input_parts": input_parts,
@@ -238,7 +255,6 @@ def playground_chat():
 
         process_playground_chat_task.delay(new_task.id)
 
-        # Immediately return the task ID and the stable conversation_id
         return jsonify({
             "status": "processing_started",
             "task_id": new_task.id,
@@ -250,29 +266,24 @@ def playground_chat():
         logger.error(f"Playground chat submission error for user {user.id}: {e}", exc_info=True)
         return jsonify({"error": "Failed to start the chat task."}), 500
 
-# ----------------- MODIFICATION IS HERE ----------------- #
-
 @main_bp.route("/get_playground_task_status/<int:task_id>", methods=['GET'])
 @auth_required
 def get_playground_task_status(task_id):
     task = Task.query.get_or_404(task_id)
 
-    # Security check: ensure the user owns this task
     if task.user_id != session['user']['uid']:
         return jsonify({"error": "Unauthorized"}), 403
 
     if task.status == 'humanization_complete':
         final_conversation_id = (task.diff_data or {}).get("final_conversation_id")
         
-        # Fetch the conversation to get the updated title
         conversation = Conversation.query.get(final_conversation_id) if final_conversation_id else None
         
-        # On completion, send back the final response, conversation ID, AND the new title
         return jsonify({
             "status": "complete",
             "response": task.humanized_output,
             "conversation_id": final_conversation_id,
-            "conversation_title": conversation.title if conversation else "Chat" # Add this line
+            "conversation_title": conversation.title if conversation else "Chat"
         })
     elif task.status == 'humanization_failed':
         return jsonify({
@@ -280,10 +291,7 @@ def get_playground_task_status(task_id):
             "error": task.error_message
         })
     else:
-        # Otherwise, just report that it's still processing
         return jsonify({"status": "processing"})
-
-# ----------------- END OF MODIFICATION ----------------- #
 
 
 @main_bp.route("/humanizer", methods=['GET'])
@@ -390,7 +398,7 @@ def _handle_logged_in_humanization():
                                      transaction_type='humanize_fee', description=transaction_ref))
         
         new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
-                        amount_charged=amount_to_charge, status='queued', user_id=user.id, # Status is now 'queued'
+                        amount_charged=amount_to_charge, status='queued', user_id=user.id,
                         diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
         db.session.add(new_task)
         db.session.commit()
