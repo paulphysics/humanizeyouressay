@@ -8,13 +8,13 @@ import re
 import json
 import threading
 import logging
-import time # <-- Added for rate limiting
+import time
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
                    redirect, url_for, flash, current_app, session, abort)
-from werkzeug.utils import secure_filename # <-- Added for security
-import zipfile # <-- Added for zip file processing
-from werkzeug.exceptions import RequestEntityTooLarge 
+from werkzeug.utils import secure_filename
+import zipfile
+from werkzeug.exceptions import RequestEntityTooLarge
 from sqlalchemy import desc, or_
 import pytz
 import difflib
@@ -39,32 +39,25 @@ WHATSAPP_NUMBER = "254712345678"
 MAX_WORDS = 1925
 NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
 
-# --- NEW: Security Feature 1: Strict File Type Whitelisting ---
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'gif'}
+# --- Security: Whitelist for initial uploads ---
+ALLOWED_EXTENSIONS = {'pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'txt'}
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- NEW: Security Feature 2: Rate Limiting ---
+# --- Security: Rate Limiting ---
 def check_rate_limit(limit=10, per=timedelta(minutes=1)):
-    """
-    Checks if the current user has exceeded upload limits.
-    Uses the session to track upload timestamps.
-    """
     now = time.time()
     uploads = session.get('upload_timestamps', [])
-    
-    # Filter out timestamps older than the time window
     recent_uploads = [ts for ts in uploads if now - ts < per.total_seconds()]
-    
+
     if len(recent_uploads) >= limit:
-        return False # Limit exceeded
-        
+        return False
+
     recent_uploads.append(now)
     session['upload_timestamps'] = recent_uploads
-    return True # OK
-
+    return True
 
 def sanitize_filename(filename):
     if not filename:
@@ -73,7 +66,6 @@ def sanitize_filename(filename):
     return re.sub(r'(?u)[^-\w.]', '', filename)
 
 def get_display_name(user):
-    """Gets the user's first name, with a fallback to their email."""
     if user and user.name:
         return user.name.split(' ')[0]
     elif user and user.email:
@@ -82,18 +74,11 @@ def get_display_name(user):
 
 @main_bp.route("/")
 def index():
-    """
-    Renders the appropriate page based on login status and user role.
-    """
     if 'user' in session:
         user = User.query.get(session['user']['uid'])
         if not user:
             session.clear()
             return redirect(url_for('main.index'))
-
-        if user.is_admin:
-            return redirect(url_for('admin_dashboard.dashboard'))
-        
         return redirect(url_for('main.playground'))
     else:
         firebase_config = {
@@ -112,16 +97,12 @@ def index():
 @main_bp.app_errorhandler(413)
 @main_bp.app_errorhandler(RequestEntityTooLarge)
 def handle_file_too_large(e):
-    """Handles the 'Request Entity Too Large' error for file uploads."""
     if request.path == url_for('main.extract_text_from_file'):
         return jsonify(error="File is too large. Please upload files under 10MB."), 413
     return "File is too large.", 413
 
 @main_bp.route('/api/get-models')
 def get_models():
-    """
-    API endpoint to provide model data to the frontend.
-    """
     models_config = current_app.config.get('MODELS', {})
     model_list = [
         {
@@ -144,21 +125,21 @@ def transaction_history():
 
     page = request.args.get('page', 1, type=int)
     per_page = 20
-    
+
     pagination = Transaction.query.filter_by(wallet_id=user.wallet.id).order_by(desc(Transaction.created_at)).paginate(page=page, per_page=per_page, error_out=False)
-    
+
     transactions = pagination.items
-    
+
     if transactions:
         current_balance = user.wallet.balance
-        
+
         sum_of_newer_transactions = db.session.query(db.func.sum(Transaction.amount)).filter(
             Transaction.wallet_id == user.wallet.id,
             Transaction.created_at > transactions[0].created_at
         ).scalar() or 0.0
 
         balance_after = current_balance - sum_of_newer_transactions
-        
+
         for t in transactions:
             t.balance_after = balance_after
             balance_after -= t.amount
@@ -184,9 +165,9 @@ def transaction_history():
                 conv_id_part = t.description.split(':')[0]
                 conv_id_str = conv_id_part.split('-')[1]
                 conv_id = int(conv_id_str)
-                
+
                 conversation = Conversation.query.get(conv_id)
-                
+
                 if conversation and conversation.title:
                     t.display_title = f"{t.description} - {conversation.title}"
                 else:
@@ -195,10 +176,10 @@ def transaction_history():
                 pass
 
     username = get_display_name(user)
-    return render_template("transaction_history.html", 
+    return render_template("transaction_history.html",
                            user=user,
-                           transactions=transactions, 
-                           username=username, 
+                           transactions=transactions,
+                           username=username,
                            pagination=pagination,
                            wallet_balance=user.wallet.balance,
                            is_admin=user.is_admin)
@@ -276,9 +257,9 @@ def get_playground_task_status(task_id):
 
     if task.status == 'humanization_complete':
         final_conversation_id = (task.diff_data or {}).get("final_conversation_id")
-        
+
         conversation = Conversation.query.get(final_conversation_id) if final_conversation_id else None
-        
+
         return jsonify({
             "status": "complete",
             "response": task.humanized_output,
@@ -292,7 +273,6 @@ def get_playground_task_status(task_id):
         })
     else:
         return jsonify({"status": "processing"})
-
 
 @main_bp.route("/humanizer", methods=['GET'])
 @auth_required
@@ -313,9 +293,9 @@ def playground():
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
     wallet_balance = user.wallet.balance if user.wallet else 0
-    
+
     models = current_app.config['MODELS']
-    
+
     return render_template(
         "playground.html",
         user=user,
@@ -324,7 +304,7 @@ def playground():
         is_admin=user.is_admin,
         models=models
     )
-    
+
 def _initiate_payment_in_background(app, amount, phone_number, transaction_ref):
     with app.app_context():
         try:
@@ -383,32 +363,32 @@ def _handle_logged_in_humanization():
 
         if not input_text:
             return jsonify({"status": "error", "message": "Text input is required."}), 400
-        
+
         if humanizer_mode != 'document_formatter' and word_count > MAX_WORDS:
             return jsonify({"status": "error", "message": f"Input exceeds the maximum of {MAX_WORDS} words."}), 413
-        
+
         price = ESSAY_PRICE_PER_UNIT if humanizer_mode == 'essay' else PRICE_PER_UNIT
         amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
         if user.wallet.balance < amount_to_charge:
             return jsonify({"status": "error", "message": "Insufficient Funds! Please top up your wallet."}), 402
-        
+
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
                                      transaction_type='humanize_fee', description=transaction_ref))
-        
+
         new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
                         amount_charged=amount_to_charge, status='queued', user_id=user.id,
                         diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
         db.session.add(new_task)
         db.session.commit()
-        
+
         process_humanization_task.delay(new_task.id)
-        
+
         return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
 
     except AllModelsFailedError as e:
-        db.session.rollback()  
+        db.session.rollback()
         flash(e.message, "danger")
         return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
     except Exception as e:
@@ -417,19 +397,18 @@ def _handle_logged_in_humanization():
         flash("An unexpected error occurred. Please try again.", "danger")
         return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
 
-
 def _handle_anonymous_humanization():
     data = request.form
     input_text, phone_number = data.get("input_text", "").strip(), data.get("phone_number", "").strip()
     word_count = count_words(input_text)
     humanizer_mode = data.get("humanizer_mode", "standard")
-    
+
     if not all([input_text, phone_number]):
         return jsonify({"status": "error", "message": "Text and phone number are required."}), 400
-        
+
     if humanizer_mode != 'document_formatter' and word_count > MAX_WORDS:
         return jsonify({"status": "error", "message": f"Input exceeds the maximum of {MAX_WORDS} words."}), 413
-        
+
     if not KENYAN_PHONE_REGEX.match(phone_number):
         return jsonify({"status": "error", "message": "Invalid Kenyan phone number format."}), 400
     price = ESSAY_PRICE_PER_UNIT + 10 if humanizer_mode == 'essay' else PRICE_PER_UNIT + 10
@@ -512,21 +491,21 @@ def download_formatted_doc(transaction_id):
     if task.status != 'humanization_complete':
         flash("Document is not yet ready for download.", "danger")
         return redirect(url_for('main.home'))
-    
+
     output_dir = "/tmp" if os.environ.get("FLASK_ENV") == "production" else "output_docs"
     os.makedirs(output_dir, exist_ok=True)
-    
+
     diff_data = task.diff_data or {}
     title = diff_data.get('generated_title') or "Processed document"
     filename = f"{sanitize_filename(title)}.docx"
     filepath = os.path.join(output_dir, filename)
-    
+
     metadata = {'title': title, 'author': "Name", 'date': datetime.now(NAIROBI_TZ).strftime("%d %B %Y")}
     references = diff_data.get('formatted_references', [])
-    
+
     if create_formatted_document(diff_data.get('output_format'), task.humanized_output, filepath, metadata, references):
         return send_file(filepath, as_attachment=True)
-    
+
     flash("Failed to generate the document.", "danger")
     return redirect(url_for('main.home'))
 
@@ -549,7 +528,7 @@ def view_task_details(transaction_id):
             logger.warning(f"Task {task.id} is not complete. Status is '{task.status}'. Redirecting.")
             flash("This task is not yet complete.", "danger")
             return redirect(request.referrer or url_for('main.home'))
-        
+
         output_format = diff_data.get('output_format')
         logger.debug(f"Task {task.id} output_format is '{output_format}'.")
 
@@ -569,9 +548,9 @@ def view_task_details(transaction_id):
                 text_segment = d.get("text", "")
                 diff_type = d.get("type", "equal")
                 css_class = "word-added" if diff_type == "added" else "word-equal"
-                
+
                 parts = text_segment.split("[[PARAGRAPH_BREAK]]")
-                
+
                 if parts[0].strip():
                     current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
 
@@ -579,14 +558,14 @@ def view_task_details(transaction_id):
                     for i in range(1, len(parts)):
                         if current_paragraph_spans:
                             final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-                        
+
                         current_paragraph_spans = []
                         if parts[i].strip():
                             current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
 
             if current_paragraph_spans:
                 final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-            
+
             html_output = "".join(final_html_parts)
             logger.info("Successfully generated HTML from word_diff with robust paragraph construction.")
         elif task.humanized_output:
@@ -620,9 +599,9 @@ def instructions():
     username = get_display_name(user) if user else None
     wallet_balance = user.wallet.balance if user and user.wallet else 0
     is_admin = user.is_admin if user else False
-    return render_template("instructions.html", 
+    return render_template("instructions.html",
                            user=user,
-                           username=username, 
+                           username=username,
                            wallet_balance=wallet_balance,
                            is_admin=is_admin)
 
@@ -657,14 +636,14 @@ def contact():
     username = get_display_name(user) if user else None
     wallet_balance = user.wallet.balance if user and user.wallet else 0
     is_admin = user.is_admin if user else False
-    
-    return render_template("contact.html", 
-                           user=user, 
-                           whatsapp_number=WHATSAPP_NUMBER, 
+
+    return render_template("contact.html",
+                           user=user,
+                           whatsapp_number=WHATSAPP_NUMBER,
                            username=username,
                            wallet_balance=wallet_balance,
                            is_admin=is_admin)
-    
+
 @main_bp.route("/get_conversations", methods=['GET'])
 @auth_required
 def get_conversations():
@@ -677,16 +656,16 @@ def get_conversations():
 
     if query:
         base_query = base_query.filter(Conversation.title.ilike(f'%{query}%'))
-        
+
     paginated_convs = base_query.order_by(Conversation.created_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
 
     conversations_data = [
-        {"id": conv.id, "title": conv.title} 
+        {"id": conv.id, "title": conv.title}
         for conv in paginated_convs.items
     ]
-    
+
     return jsonify({
     'conversations': conversations_data,
     'total_pages': paginated_convs.pages,
