@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //== PLAYGROUND LOGIC
     //======================================================================
     function initializePlayground() {
+        let isInternetSearchActive = false; // State for the internet toggle
         let alertTimeout = null;
         const ALERT_DURATION = 5000;
         let isFetchingHistory = false;
@@ -130,8 +131,8 @@ document.addEventListener('DOMContentLoaded', () => {
             playgroundContainer: document.getElementById('playground-container'),
             dropZone: document.getElementById('drop-zone'),
             conversationIdInput: document.getElementById('conversation-id-storage'),
-            // ** ADDED ELEMENT **
             clearHistoryBtn: document.getElementById('clear-history-btn'),
+            internetSearchToggle: document.getElementById('internet-search-toggle'), // Added toggle button
         };
 
         const sidebarOverlay = document.createElement('div');
@@ -260,6 +261,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }, 3000);
         };
+
+        // --- NEW: Function to handle the internet toggle ---
+        const toggleInternetSearch = () => {
+            isInternetSearchActive = !isInternetSearchActive;
+            if (DOMElements.internetSearchToggle) {
+                DOMElements.internetSearchToggle.classList.toggle('search-active', isInternetSearchActive);
+            }
+        };
         
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
@@ -301,6 +310,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
                 const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
                 if (!selectedModel) throw new Error('Please select a model.');
+                
+                // --- MODIFIED: Send toggle state to backend ---
                 const response = await fetch('/playground_chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -308,8 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         model: selectedModel,
                         input: userInputPayload,
                         conversation_id: currentConversationId,
+                        internet_search_enabled: isInternetSearchActive 
                     })
                 });
+
+                // --- NEW: Reset the toggle after sending ---
+                if (isInternetSearchActive) {
+                    toggleInternetSearch();
+                }
+
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
 
@@ -511,7 +529,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // ** NEW FUNCTION **
         const clearAllConversations = async () => {
             if (confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
                 try {
@@ -523,8 +540,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         throw new Error(errorData.error || 'Failed to clear history.');
                     }
                     showAlert('All conversations have been cleared.', 'success');
-                    fetchConversations(); // Refresh the conversation list
-                    startNewChat();     // Go to a new chat screen
+                    fetchConversations(); 
+                    startNewChat();     
                 } catch (error) {
                     showAlert(error.message, 'danger');
                 }
@@ -663,8 +680,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (DOMElements.generateBtn) DOMElements.generateBtn.addEventListener('click', handleGenerate);
         if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
         if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
-        // ** ADDED EVENT LISTENER **
         if (DOMElements.clearHistoryBtn) DOMElements.clearHistoryBtn.addEventListener('click', clearAllConversations);
+        
+        // --- NEW: Event listener for the internet toggle ---
+        if (DOMElements.internetSearchToggle) {
+            DOMElements.internetSearchToggle.addEventListener('click', toggleInternetSearch);
+        }
+
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleHistorySidebar);
         if (DOMElements.searchHistoryInput) {
             let searchTimeout;
@@ -903,7 +925,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const Actions = {
             submitHumanization: async () => {
-                // --- NEW: Validation Check ---
                 const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
                 const selectedFormat = document.querySelector('input[name="output_format"]:checked');
                 const selectedDialect = document.querySelector('input[name="english_dialect"]:checked');
@@ -911,7 +932,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!selectedMode || !selectedFormat || !selectedDialect) {
                     return UI.showAlert('Please select a Mode, Format, and Dialect before proceeding.', 'danger');
                 }
-                // --- END VALIDATION ---
 
                 const formData = new FormData(DOMElements.humanizeForm);
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
