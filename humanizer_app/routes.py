@@ -522,7 +522,6 @@ def download_formatted_doc(transaction_id):
     flash("Failed to generate the document.", "danger")
     return redirect(url_for('main.home'))
 
-# --- CORRECTED view_task_details function ---
 @main_bp.route("/task/details/<transaction_id>")
 @auth_required
 def view_task_details(transaction_id):
@@ -540,11 +539,9 @@ def view_task_details(transaction_id):
         flash("This task is not yet complete.", "danger")
         return redirect(request.referrer or url_for('main.transaction_history'))
 
-    # If the output is not plain text, it must be a downloadable document.
     if output_format != 'plain_text':
         return redirect(url_for('main.download_formatted_doc', transaction_id=task.external_reference))
 
-    # --- Logic for displaying plain text diff remains the same ---
     html_output = "Error: Could not render task output."
     try:
         word_diff = diff_data.get('word_diff')
@@ -575,7 +572,9 @@ def view_task_details(transaction_id):
             html_output = "".join(final_html_parts)
         elif task.humanized_output:
             paragraphs = task.humanized_output.split('\n\n')
-            final_paragraphs = [f'<p style="text-indent: 0;">{p.replace("\n", "<br>")}</p>' for p in paragraphs]
+            # --- SYNTAX ERROR FIX ---
+            final_paragraphs = [f'<p style="text-indent: 0;">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs]
+            # --- END FIX ---
             html_output = "".join(final_paragraphs)
         else:
             html_output = "Error: No output data found for this task."
