@@ -126,10 +126,28 @@ def process_playground_chat_task(self, task_id: int):
         for msg in past_messages:
             if msg.role == 'user':
                 try:
+                    # --- START MODIFICATION for Image Explanation ---
                     content_parts = json.loads(msg.content)
-                    simple_content = " ".join(part.get("text", "") for part in content_parts if part.get("type") == "input_text")
-                    message_history.append({"role": "user", "content": simple_content})
+                    # This will now create a list of text and image parts for the AI
+                    vision_message_content = []
+                    for part in content_parts:
+                        if part.get("type") == "input_text" and part.get("text"):
+                            vision_message_content.append({
+                                "type": "text",
+                                "text": part["text"]
+                            })
+                        elif part.get("type") == "input_image" and part.get("image_url"):
+                            vision_message_content.append({
+                                "type": "image_url",
+                                "image_url": part["image_url"]
+                            })
+                    
+                    if vision_message_content:
+                        message_history.append({"role": "user", "content": vision_message_content})
+                    # --- END MODIFICATION ---
+
                 except (json.JSONDecodeError, TypeError):
+                    # Fallback for older, plain text messages if any exist
                     message_history.append({"role": "user", "content": msg.content})
             elif msg.role == 'assistant':
                 message_history.append({"role": "assistant", "content": msg.content})
