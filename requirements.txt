@@ -17,3 +17,6 @@ PyPDF2
 celery
 redis
 gevent
+google-search-results
+requests
+beautifulsoup4
