@@ -41,14 +41,14 @@
                         </td>
                         <td class="py-3 px-4 text-right font-semibold">{{ "%.2f"|format(transaction.balance_after) }}</td>
                         <td class="py-3 px-4 text-center">
-                            {% if transaction.task and transaction.task.output_url %}
-                                <a href="{{ transaction.task.output_url }}" class="text-indigo-600 hover:text-indigo-900 font-semibold">
-                                    {{ transaction.task.output_type|title }}
+                            {% if transaction.transaction_type == 'humanize_fee' and transaction.task and transaction.task.status == 'humanization_complete' %}
+                                <a href="{{ url_for('main.view_task_details', transaction_id=transaction.task.external_reference) }}" class="text-indigo-600 hover:text-indigo-900 font-medium">
+                                    View Output
                                 </a>
                             {% else %}
                                 <span class="text-gray-400">N/A</span>
                             {% endif %}
-                        </td>
+                            </td>
                     </tr>
                     {% else %}
                     <tr>
