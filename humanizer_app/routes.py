@@ -1,793 +1,1003 @@
-# humanizer_app/routes.py
-import os
-import PyPDF2
-import docx
-import io
-import uuid
-import re
-import json
-import threading
-import logging
-import time
-from datetime import datetime, timedelta
-from flask import (Blueprint, request, render_template, jsonify, send_file,
-                   redirect, url_for, flash, current_app, session, abort)
-from werkzeug.utils import secure_filename
-import zipfile
-from werkzeug.exceptions import RequestEntityTooLarge
-from sqlalchemy import desc, or_
-import pytz
-import difflib
+document.addEventListener('DOMContentLoaded', () => {
 
-from .extensions import db
-from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage
-from .payment_service import (initiate_payhero_payment, WORDS_PER_UNIT,
-                              PRICE_PER_UNIT, ESSAY_PRICE_PER_UNIT)
-from .document_formatter import create_formatted_document
-from .humanizer_service.utils import count_words
-from .humanizer_service.exceptions import AllModelsFailedError
-from .auth_routes import auth_required
-from .humanizer_service.api_clients import call_single_openai_model
-from .humanizer_service.api_clients import openai_client
-from .tasks import process_playground_chat_task, process_humanization_task
+    // --- INITIALIZATION LOGIC ---
+    initializeSharedComponents();
 
-main_bp = Blueprint('main', __name__)
-KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
-logger = logging.getLogger(__name__)
+    const isPlaygroundPage = document.getElementById('playground-container');
+    if (isPlaygroundPage) {
+        initializePlayground();
+    }
 
-WHATSAPP_NUMBER = "254712345678"
-MAX_WORDS = 1925
-NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
+    const isHumanizerPage = document.getElementById('humanizeForm');
+    if (isHumanizerPage) {
+        initializeHumanizer();
+    }
 
-# --- Security: Whitelist for allowed initial uploads ---
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'txt'}
+    //======================================================================
+    //== SHARED LOGIC
+    //======================================================================
+    function initializeSharedComponents() {
+        const DOMElements = {
+            topUpBtn: document.getElementById('topUpBtn'),
+            mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
+            topUpModal: document.getElementById('topUpModal'),
+            closeTopUpModalBtn: document.getElementById('closeTopUpModalBtn'),
+            submitTopUpBtn: document.getElementById('submitTopUpBtn'),
+            walletToggle: document.getElementById('wallet-toggle'),
+            jsAlertContainer: document.getElementById('js-alert-container'),
+            jsAlertMessage: document.getElementById('js-alert-message'),
+            hamburgerBtn: document.getElementById('menu-btn'),
+            mobileMenu: document.getElementById('mobile-menu')
+        };
 
-# --- Security: Blocklist for executable/dangerous files ---
-BLOCKED_EXTENSIONS = {
-    'exe', 'dll', 'so', 'bat', 'sh', 'ps1', 'vbs', 'msi', 'jar', 'cmd', 'scr'
-}
+        const showAlert = (message, type = 'info') => {
+            let alertTimeout = null;
+            if (alertTimeout) clearTimeout(alertTimeout);
+            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
+            if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
+            if (DOMElements.jsAlertContainer) {
+                DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
+                DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
+            }
+            alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), 5000);
+        };
 
-def is_extension_allowed(filename):
-    if '.' not in filename:
-        return False
-    ext = filename.rsplit('.', 1)[1].lower()
-    if ext in BLOCKED_EXTENSIONS:
-        return False # Explicitly blocked
-    if ext in ALLOWED_EXTENSIONS:
-        return True # Explicitly allowed for direct upload
-    return False # Default to not allowed for direct upload
+        const UI = {
+            openTopUpModal: () => DOMElements.topUpModal?.classList.remove('hidden'),
+            closeTopUpModal: () => DOMElements.topUpModal?.classList.add('hidden'),
+            toggleMobileMenu: () => DOMElements.mobileMenu?.classList.toggle('hidden')
+        };
 
-# --- Security: Rate Limiting ---
-def check_rate_limit(limit=10, per=timedelta(minutes=1)):
-    now = time.time()
-    uploads = session.get('upload_timestamps', [])
-    recent_uploads = [ts for ts in uploads if now - ts < per.total_seconds()]
-    if len(recent_uploads) >= limit:
-        return False
-    recent_uploads.append(now)
-    session['upload_timestamps'] = recent_uploads
-    return True
+        const Actions = {
+            submitTopUp: async () => {
+                const amount = document.getElementById('top_up_amount').value;
+                const phone = document.getElementById('phone_number_top_up').value.trim();
+                if (!amount || amount <= 0) return showAlert('Please enter a valid amount.', 'danger');
+                if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return showAlert('Invalid phone number.', 'danger');
+                UI.closeTopUpModal();
+                showAlert('Sending top-up request...', 'info');
+                try {
+                    const response = await fetch('/wallet/topup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: parseFloat(amount), phone_number: phone })
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error || 'An error occurred.');
+                    showAlert('STK push sent. Please check your phone to complete payment.', 'success');
+                } catch (error) {
+                    showAlert(error.message, 'danger');
+                }
+            },
+            toggleWalletBalance: () => {
+                const walletIcon = document.getElementById('wallet-icon');
+                const walletBalanceAmount = document.getElementById('wallet-balance-amount');
+                if (!DOMElements.walletToggle || !walletIcon || !walletBalanceAmount) return;
+                const isHidden = DOMElements.walletToggle.classList.toggle('balance-hidden');
+                walletIcon.classList.toggle('text-gray-500', !isHidden);
+                walletIcon.classList.toggle('text-green-600', isHidden);
+                walletBalanceAmount.classList.toggle('text-green-600', !isHidden);
+                walletBalanceAmount.classList.toggle('text-gray-500', isHidden);
+                walletBalanceAmount.textContent = isHidden ? 'KSh ***' : `KSh ${walletBalanceAmount.dataset.balance}`;
+            }
+        };
 
-def sanitize_filename(filename):
-    if not filename:
-        return "document"
-    filename = filename.strip().replace(' ', '_')
-    return re.sub(r'(?u)[^-\w.]', '', filename)
+        if (DOMElements.topUpBtn) DOMElements.topUpBtn.addEventListener('click', UI.openTopUpModal);
+        if (DOMElements.mobileTopUpBtn) DOMElements.mobileTopUpBtn.addEventListener('click', UI.openTopUpModal);
+        if (DOMElements.closeTopUpModalBtn) DOMElements.closeTopUpModalBtn.addEventListener('click', UI.closeTopUpModal);
+        if (DOMElements.submitTopUpBtn) DOMElements.submitTopUpBtn.addEventListener('click', Actions.submitTopUp);
+        if (DOMElements.walletToggle) DOMElements.walletToggle.addEventListener('click', Actions.toggleWalletBalance);
+        if (DOMElements.hamburgerBtn) DOMElements.hamburgerBtn.addEventListener('click', UI.toggleMobileMenu);
+        window.addEventListener('click', (e) => {
+            if (e.target === DOMElements.topUpModal) UI.closeTopUpModal();
+        });
+    }
 
-def get_display_name(user):
-    if user and user.name:
-        return user.name.split(' ')[0]
-    elif user and user.email:
-        return user.email.split('@')[0]
-    return "User"
+    //======================================================================
+    //== PLAYGROUND LOGIC
+    //======================================================================
+    function initializePlayground() {
+        let alertTimeout = null;
+        const ALERT_DURATION = 5000;
+        let isFetchingHistory = false;
+        let isChatActive = false;
+        let attachedFiles = [];
+        const MAX_TOTAL_SIZE = 10 * 1024 * 1024;
+        let pollingInterval = null;
 
-@main_bp.route("/")
-def index():
-    if 'user' in session:
-        user = User.query.get(session['user']['uid'])
-        if not user:
-            session.clear()
-            return redirect(url_for('main.index'))
+        const DOMElements = {
+            modelSelectionBar: document.getElementById('model-selection-bar'),
+            uploadBtn: document.getElementById('upload-btn'),
+            fileInput: document.getElementById('file-input'),
+            attachmentPreviewContainer: document.getElementById('attachment-preview-container'),
+            chatLog: document.getElementById('chat-log'),
+            promptInput: document.getElementById('prompt-input'),
+            generateBtn: document.getElementById('generate-btn'),
+            newChatBtn: document.getElementById('new-chat-btn'),
+            conversationList: document.getElementById('conversation-list'),
+            modelSelector: document.getElementById('model-selector'),
+            modelSelectorBtn: document.getElementById('model-selector-btn'),
+            modelSelectorOptions: document.getElementById('model-selector-options'),
+            modelSelectorLabel: document.getElementById('model-selector-label'),
+            jsAlertContainer: document.getElementById('js-alert-container'),
+            jsAlertMessage: document.getElementById('js-alert-message'),
+            historySidebar: document.getElementById('history-sidebar'),
+            showHistoryBtn: document.getElementById('show-history-btn'),
+            searchHistoryInput: document.getElementById('search-history-input'),
+            paginationContainer: document.getElementById('history-pagination-container'),
+            historyLoadingSpinner: document.getElementById('history-loading-spinner'),
+            playgroundWelcomeHeader: document.getElementById('playground-welcome-header'),
+            playgroundContainer: document.getElementById('playground-container'),
+            dropZone: document.getElementById('drop-zone'),
+            conversationIdInput: document.getElementById('conversation-id-storage'),
+        };
+
+        const sidebarOverlay = document.createElement('div');
+        sidebarOverlay.classList.add('sidebar-overlay');
+        document.body.appendChild(sidebarOverlay);
+
+        function markdownToHtml(text) {
+            if (typeof marked !== 'undefined') {
+               return marked.parse(text);
+            }
+            console.warn("marked.js not loaded. Using fallback markdown renderer.");
+            return text
+                .replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+                .replace(/\n/g, '<br>');
+        }
         
-        if user.is_admin:
-            return redirect(url_for('admin_dashboard.dashboard'))
+        const highlightCodeBlocks = () => {
+           if (typeof hljs === 'undefined') {
+               console.warn('highlight.js not loaded, skipping syntax highlighting.');
+               return;
+           }
         
-        return redirect(url_for('main.playground'))
-    else:
-        firebase_config = {
-            "apiKey": os.getenv("FIREBASE_API_KEY"), "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-            "projectId": os.getenv("FIREBASE_PROJECT_ID"), "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-            "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"), "appId": os.getenv("FIREBASE_APP_ID"),
-            "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
+           document.querySelectorAll('#chat-log pre').forEach((preElement) => {
+               const block = preElement.querySelector('code');
+               if (!block) return;
+        
+               if (!block.hasAttribute('data-highlighted')) {
+                   hljs.highlightElement(block);
+                   block.setAttribute('data-highlighted', 'true');
+               }
+        
+               if (!preElement.querySelector('.code-copy-btn')) {
+                   const copyBtn = document.createElement('button');
+                   copyBtn.className = 'code-copy-btn';
+                   copyBtn.title = 'Copy code';
+        
+                   const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
+                   const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+        
+                   copyBtn.innerHTML = clipboardIcon;
+        
+                   copyBtn.addEventListener('click', () => {
+                       navigator.clipboard.writeText(block.innerText).then(() => {
+                           copyBtn.innerHTML = checkIcon;
+                           setTimeout(() => {
+                               copyBtn.innerHTML = clipboardIcon;
+                           }, 2000);
+                       }).catch(err => {
+                           console.error('Failed to copy text: ', err);
+                       });
+                   });
+        
+                   preElement.prepend(copyBtn);
+               }
+           });
+        };
+
+        const showAlert = (message, type = 'info') => {
+            if (alertTimeout) clearTimeout(alertTimeout);
+            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
+            if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
+            if (DOMElements.jsAlertContainer) {
+                DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
+                DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
+            }
+            alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), ALERT_DURATION);
+        };
+
+        const showProcessing = (isProcessing) => {
+            if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
+        };
+        
+        const toggleHistorySidebar = () => {
+            if (DOMElements.historySidebar && sidebarOverlay) {
+                DOMElements.historySidebar.classList.toggle('mobile-hidden');
+                sidebarOverlay.classList.toggle('show');
+            }
+        };
+
+        const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
+            let attempts = 0;
+            pollingInterval = setInterval(async () => {
+                attempts++;
+                if (attempts > 60) {
+                    clearInterval(pollingInterval);
+                    messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
+                    showProcessing(false);
+                    return;
+                }
+                try {
+                    const response = await fetch(`/get_playground_task_status/${taskId}`);
+                    if (!response.ok) {
+                        if (response.status !== 404 || attempts > 5) {
+                           throw new Error("Failed to get task status from server.");
+                        }
+                        return;
+                    }
+                    const data = await response.json();
+                    if (data.status === 'complete') {
+                        clearInterval(pollingInterval);
+                        messageBubble.innerHTML = markdownToHtml(data.response);
+                        highlightCodeBlocks();
+                        addMessageActions(messageContainer, data.response);
+                        showProcessing(false);
+                        
+                        if (data.conversation_title) {
+                            const convItem = DOMElements.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
+                            if (convItem) {
+                                const titleSpan = convItem.querySelector('span.truncate');
+                                if(titleSpan) titleSpan.textContent = data.conversation_title;
+                            }
+                        }
+
+                    } else if (data.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
+                        showProcessing(false);
+                    }
+                } catch (error) {
+                    clearInterval(pollingInterval);
+                    messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+                    showProcessing(false);
+                }
+            }, 3000);
+        };
+        
+        const handleGenerate = async () => {
+            if (!DOMElements.promptInput) return;
+            const prompt = DOMElements.promptInput.value.trim();
+            if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
+            
+            const currentConversationId = DOMElements.conversationIdInput.value;
+
+            if (!currentConversationId && DOMElements.modelSelectionBar) {
+                DOMElements.modelSelectionBar.style.display = 'none';
+            }
+            if (!isChatActive) {
+                isChatActive = true;
+                if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
+                if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
+            }
+            let userInputPayload = [{ "type": "input_text", "text": prompt }];
+            let displayMessage = prompt;
+            attachedFiles.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    userInputPayload.push({ "type": "input_image", "image_url": { "url": file.data } });
+                } else {
+                    userInputPayload.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
+                }
+            });
+            if (attachedFiles.length > 0) {
+                displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
+            }
+            addMessageToLog('user', displayMessage);
+            
+            DOMElements.promptInput.value = '';
+            attachedFiles = [];
+            renderAttachedFiles();
+
+            showProcessing(true);
+            const thinkingPlaceholder = `<div class="flex items-center gap-x-2"><div class="spinner !w-5 !h-5"></div><span>Thinking...</span></div>`;
+            const { messageContainer, messageBubble } = addMessageToLog('bot', thinkingPlaceholder, false);
+            try {
+                if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
+                const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
+                if (!selectedModel) throw new Error('Please select a model.');
+                const response = await fetch('/playground_chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        input: userInputPayload,
+                        conversation_id: currentConversationId,
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
+
+                if (data.conversation_id) {
+                    const isNewConversation = !DOMElements.conversationIdInput.value;
+                    DOMElements.conversationIdInput.value = data.conversation_id;
+                    if (isNewConversation) {
+                        await fetchConversations(); 
+                    }
+                }
+
+                if (data.status === 'processing_started' && data.task_id) {
+                    pollForTaskResult(data.task_id, messageContainer, messageBubble);
+                } else {
+                    throw new Error("Invalid response from server when starting task.");
+                }
+            } catch (error) {
+                messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+                showProcessing(false);
+            }
+        };
+
+        const renderAttachedFiles = () => {
+            if (!DOMElements.attachmentPreviewContainer) return;
+            DOMElements.attachmentPreviewContainer.innerHTML = '';
+            if (attachedFiles.length === 0) return;
+            attachedFiles.forEach((file, index) => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'bg-gray-100 p-2 rounded-lg flex items-center justify-between text-sm';
+                let previewContent = `<span class="text-gray-700 truncate">${file.name}</span>`;
+                if (file.type.startsWith('image/')) {
+                    previewContent = `<img src="${file.data}" class="w-8 h-8 rounded-md object-cover mr-2">` + previewContent;
+                }
+                fileElement.innerHTML = `<div class="flex items-center gap-x-2">${previewContent}</div><button data-index="${index}" class="remove-attachment-btn p-1 rounded-full text-gray-500 hover:bg-gray-300"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
+                DOMElements.attachmentPreviewContainer.appendChild(fileElement);
+            });
+            document.querySelectorAll('.remove-attachment-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const indexToRemove = parseInt(e.currentTarget.dataset.index, 10);
+                    attachedFiles.splice(indexToRemove, 1);
+                    renderAttachedFiles();
+                });
+            });
+        };
+        
+        const handleFiles = async (files) => {
+            const fileList = Array.from(files);
+            let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
+            for (const file of fileList) {
+                totalSize += file.size;
+                if (totalSize > MAX_TOTAL_SIZE) {
+                    showAlert(`Total file size cannot exceed 10MB.`, 'danger');
+                    return;
+                }
+            }
+            showAlert('Processing attachments...', 'info');
+            for (const file of fileList) {
+                const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                // --- MODIFICATION: Add zip files to the allowed list ---
+                const allowedTextFiles = [
+                    'application/pdf', 
+                    'text/plain', 
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/zip'
+                ];
+                let fileData = { name: file.name, type: file.type, size: file.size, data: null };
+                if (allowedImageTypes.includes(file.type)) {
+                    fileData.data = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (event) => resolve(event.target.result);
+                        reader.readAsDataURL(file);
+                    });
+                    attachedFiles.push(fileData);
+                // --- FIX: Add a check for .zip extension ---
+                } else if (allowedTextFiles.includes(file.type) || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.zip')) {
+                // --- END FIX ---
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                        const response = await fetch('/extract_text_from_file', { method: 'POST', body: formData });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error);
+                        fileData.data = data.text;
+                        attachedFiles.push(fileData);
+                    } catch (error) {
+                        showAlert(`Failed to process ${file.name}: ${error.message}`, 'danger');
+                    }
+                } else {
+                    showAlert(`Unsupported file type: ${file.name}`, 'danger');
+                }
+            }
+            renderAttachedFiles();
+        };
+
+        const addMessageActions = (messageContainer, messageText) => {
+            const actionsContainer = document.createElement('div');
+            actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            copyBtn.title = 'Copy';
+            const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
+            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+            copyBtn.innerHTML = clipboardIcon;
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(messageText);
+                copyBtn.innerHTML = checkIcon;
+                setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
+            };
+            const humanizeBtn = document.createElement('button');
+            humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
+            humanizeBtn.title = 'Humanize';
+            humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
+            humanizeBtn.onclick = () => {
+                localStorage.setItem('textToHumanize', messageText);
+                window.location.href = '/humanizer';
+            };
+            actionsContainer.append(copyBtn, humanizeBtn);
+            messageContainer.appendChild(actionsContainer);
+        };
+        
+        const addMessageToLog = (sender, content, addActions = false) => {
+            if (!DOMElements.chatLog) return;
+            const isUser = sender === 'user';
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
+            messageContainer.appendChild(messageBubble);
+
+            if (!isUser && addActions) {
+                addMessageActions(messageContainer, content);
+            }
+            
+            DOMElements.chatLog.appendChild(messageContainer);
+            highlightCodeBlocks();
+            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+            return { messageContainer, messageBubble };
+        };
+
+        const loadConversation = async (convId) => {
+            try {
+                const response = await fetch(`/conversation/${convId}`);
+                if (!response.ok) throw new Error('Failed to load conversation.');
+                const messages = await response.json();
+                if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
+                
+                DOMElements.conversationIdInput.value = convId;
+
+                if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
+                messages.forEach(msg => {
+                    let content = msg.content;
+                    if (msg.role === 'user' && typeof msg.content === 'string') {
+                        try { content = JSON.parse(msg.content); } catch (e) { /* Not JSON */ }
+                    }
+                    if (msg.role === 'user') {
+                        let displayContent = "";
+                         if (Array.isArray(content)) {
+                             const textParts = content.filter(part => part.type === 'input_text').map(part => part.text).join(' ');
+                             const hasAttachments = content.some(part => part.type !== 'input_text');
+                             displayContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
+                         } else {
+                             displayContent = content;
+                         }
+                        addMessageToLog('user', displayContent);
+                    } else {
+                        addMessageToLog('bot', content, true);
+                    }
+                });
+                if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+                if (!isChatActive) {
+                    isChatActive = true;
+                    if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
+                    if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
+                }
+                document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.toggle('bg-gray-200', div.dataset.convId == convId));
+                
+                highlightCodeBlocks();
+
+                if (window.innerWidth < 1024) toggleHistorySidebar();
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        };
+
+        const deleteConversation = async (convId) => {
+            if (!confirm('Are you sure you want to delete this chat?')) return;
+            try {
+                const response = await fetch(`/conversation/${convId}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete.');
+                showAlert('Conversation deleted.', 'success');
+                fetchConversations(DOMElements.searchHistoryInput.value, 1);
+                if (DOMElements.conversationIdInput.value === convId) startNewChat();
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        };
+
+        const renderPagination = (totalPages, currentPage) => {
+            if (!DOMElements.paginationContainer) return;
+            DOMElements.paginationContainer.innerHTML = '';
+            if (totalPages <= 1) return;
+            const createButton = (text, page, isDisabled = false, isActive = false) => {
+                const button = document.createElement('button');
+                button.innerHTML = text;
+                button.dataset.page = page;
+                button.disabled = isDisabled;
+                button.className = `px-2 py-0.5 text-xs rounded-md ${isActive ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`;
+                return button;
+            };
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex items-center justify-center space-x-0.5';
+            wrapper.appendChild(createButton('&laquo;', currentPage - 1, currentPage === 1));
+            for (let i = 1; i <= totalPages; i++) {
+                if (totalPages > 7 && Math.abs(currentPage - i) > 2 && i !== 1 && i !== totalPages) {
+                    if (i === 2 || i === totalPages - 1) wrapper.insertAdjacentHTML('beforeend', `<span class="px-2 py-0.5 text-xs">...</span>`);
+                    continue;
+                }
+                wrapper.appendChild(createButton(i, i, false, i === currentPage));
+            }
+            wrapper.appendChild(createButton('&raquo;', currentPage + 1, currentPage === totalPages));
+            DOMElements.paginationContainer.appendChild(wrapper);
+        };
+
+        const appendConversations = (conversations) => {
+            if (!DOMElements.conversationList) return;
+            DOMElements.conversationList.innerHTML = '';
+            if (!conversations || conversations.length === 0) {
+                DOMElements.conversationList.innerHTML = `<p class="text-xs text-gray-500 p-2">No past conversations.</p>`;
+                return;
+            }
+            conversations.forEach(conv => {
+                const convItem = document.createElement('div');
+                convItem.className = 'flex justify-between items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer';
+                convItem.dataset.convId = conv.id;
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'text-sm text-gray-700 truncate';
+                titleSpan.textContent = conv.title;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'text-gray-400 hover:text-red-500 p-1';
+                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
+                convItem.append(titleSpan, deleteBtn);
+                titleSpan.onclick = () => loadConversation(conv.id);
+                deleteBtn.onclick = (e) => { e.stopPropagation(); deleteConversation(conv.id); };
+                DOMElements.conversationList.appendChild(convItem);
+            });
+        };
+        
+        const fetchConversations = async (query = '', page = 1) => {
+            if (isFetchingHistory) return;
+            isFetchingHistory = true;
+            if (DOMElements.historyLoadingSpinner) DOMElements.historyLoadingSpinner.style.display = 'block';
+            try {
+                const response = await fetch(`/get_conversations?q=${encodeURIComponent(query)}&page=${page}`);
+                if (!response.ok) throw new Error('Failed to fetch conversations.');
+                const data = await response.json();
+                appendConversations(data.conversations);
+                renderPagination(data.total_pages, data.current_page);
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            } finally {
+                if (DOMElements.historyLoadingSpinner) DOMElements.historyLoadingSpinner.style.display = 'none';
+                isFetchingHistory = false;
+            }
+        };
+
+        const startNewChat = () => {
+            clearInterval(pollingInterval);
+            if (DOMElements.conversationIdInput) DOMElements.conversationIdInput.value = '';
+            
+            attachedFiles = [];
+            renderAttachedFiles();
+            if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
+            if (DOMElements.promptInput) DOMElements.promptInput.value = '';
+            if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
+            
+            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false);
+
+            isChatActive = false;
+            if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
+            if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.remove('chat-active');
+            if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
+            document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
+        };
+        
+        const setupModelSelector = async () => {
+            if (!DOMElements.modelSelector) {
+                console.warn("Model selector element not found.");
+                return;
+            }
+            try {
+                const response = await fetch('/api/get-models');
+                if (!response.ok) throw new Error('Failed to load models.');
+                const models = await response.json();
+
+                if (!models || models.length === 0) {
+                    showAlert('Could not load any AI models. Please contact support.', 'danger');
+                    return; 
+                }
+
+                if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.innerHTML = '';
+                const selectedModel = models.find(m => m.selected) || models[0];
+                models.forEach(model => {
+                    const li = document.createElement('li');
+                    li.className = 'model-option p-2 hover:bg-gray-100 cursor-pointer';
+                    li.dataset.value = model.value;
+                    li.innerHTML = `<span class="font-semibold">${model.label}</span>`;
+                    if (model.selected) li.classList.add('bg-gray-200');
+                    li.onclick = () => {
+                        if (DOMElements.modelSelectorOptions) {
+                            DOMElements.modelSelectorOptions.querySelectorAll('.model-option').forEach(opt => opt.classList.remove('bg-gray-200'));
+                        }
+                        li.classList.add('bg-gray-200');
+                        DOMElements.modelSelector.dataset.selectedValue = model.value;
+                        if (DOMElements.modelSelectorLabel) DOMElements.modelSelectorLabel.textContent = model.label;
+                        if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.classList.remove('options-visible');
+                    };
+                    if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.appendChild(li);
+                });
+                DOMElements.modelSelector.dataset.selectedValue = selectedModel.value;
+                if (DOMElements.modelSelectorLabel) DOMElements.modelSelectorLabel.textContent = selectedModel.label;
+                if (DOMElements.modelSelectorBtn) DOMElements.modelSelectorBtn.onclick = () => DOMElements.modelSelectorOptions?.classList.toggle('options-visible');
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        };
+
+        if (DOMElements.generateBtn) DOMElements.generateBtn.addEventListener('click', handleGenerate);
+        if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
+        if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
+        if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleHistorySidebar);
+        if (DOMElements.searchHistoryInput) {
+            let searchTimeout;
+            DOMElements.searchHistoryInput.oninput = (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => fetchConversations(e.target.value, 1), 300);
+            };
         }
-        return render_template("home.html",
-                               username=None,
-                               WORDS_PER_UNIT=WORDS_PER_UNIT,
-                               PRICE_PER_UNIT=PRICE_PER_UNIT + 10,
-                               ESSAY_PRICE_PER_UNIT=ESSAY_PRICE_PER_UNIT + 10,
-                               firebase_config=firebase_config)
-
-@main_bp.app_errorhandler(413)
-@main_bp.app_errorhandler(RequestEntityTooLarge)
-def handle_file_too_large(e):
-    if request.path == url_for('main.extract_text_from_file'):
-        return jsonify(error="File is too large. Please upload files under 10MB."), 413
-    return "File is too large.", 413
-
-@main_bp.route('/api/get-models')
-def get_models():
-    models_config = current_app.config.get('MODELS', {})
-    model_list = [
-        {
-            'value': key,
-            'label': details['label'],
-            'price': details['price_per_word'],
-            'selected': key == current_app.config.get('DEFAULT_MODEL', 'gpt-5')
+        if (DOMElements.paginationContainer) {
+            DOMElements.paginationContainer.onclick = (e) => {
+                const button = e.target.closest('button');
+                if (button && button.dataset.page && !button.disabled) fetchConversations(DOMElements.searchHistoryInput.value, parseInt(button.dataset.page));
+            };
         }
-        for key, details in models_config.items()
-    ]
-    return jsonify(model_list)
-
-@main_bp.route("/transaction-history", methods=['GET'])
-@auth_required
-def transaction_history():
-    user = User.query.get_or_404(session['user']['uid'])
-    if not user.wallet:
-        flash("No wallet found for this user.", "error")
-        return redirect(url_for('main.home'))
-
-    page = request.args.get('page', 1, type=int)
-    per_page = 20
-
-    pagination = Transaction.query.filter_by(wallet_id=user.wallet.id).order_by(desc(Transaction.created_at)).paginate(page=page, per_page=per_page, error_out=False)
-
-    transactions = pagination.items
-
-    if transactions:
-        current_balance = user.wallet.balance
-
-        sum_of_newer_transactions = db.session.query(db.func.sum(Transaction.amount)).filter(
-            Transaction.wallet_id == user.wallet.id,
-            Transaction.created_at > transactions[0].created_at
-        ).scalar() or 0.0
-
-        balance_after = current_balance - sum_of_newer_transactions
-
-        for t in transactions:
-            t.balance_after = balance_after
-            balance_after -= t.amount
-
-    for t in transactions:
-        if hasattr(t, 'created_at') and t.created_at:
-             t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
-        else:
-             t.created_at_local_str = 'N/A'
-
-        t.task = None
-        t.display_title = t.description or 'N/A'
-
-        if t.transaction_type == 'humanize_fee' and t.description:
-            task = Task.query.filter_by(external_reference=t.description).first()
-            if task and task.status == 'humanization_complete':
-                t.task = task
-                t.display_title = f"Humanizer Task: {task.external_reference}"
-
-
-        elif t.transaction_type == 'playground_fee' and t.description and t.description.startswith('CONV-'):
-            try:
-                conv_id_part = t.description.split(':')[0]
-                conv_id_str = conv_id_part.split('-')[1]
-                conv_id = int(conv_id_str)
-
-                conversation = Conversation.query.get(conv_id)
-
-                if conversation and conversation.title:
-                    t.display_title = f"{t.description} - {conversation.title}"
-                else:
-                    t.display_title = t.description
-            except (IndexError, ValueError):
-                pass
-
-    username = get_display_name(user)
-    return render_template("transaction_history.html",
-                           user=user,
-                           transactions=transactions,
-                           username=username,
-                           pagination=pagination,
-                           wallet_balance=user.wallet.balance,
-                           is_admin=user.is_admin)
-
-@main_bp.route("/playground_chat", methods=['POST'])
-@auth_required
-def playground_chat():
-    user = User.query.get_or_404(session['user']['uid'])
-    data = request.get_json() or {}
-    input_parts = data.get('input', [])
-    model_key = data.get('model')
-    conversation_id = data.get('conversation_id')
-
-    if not isinstance(input_parts, list) or not input_parts:
-        return jsonify({"error": "No input provided."}), 400
-
-    try:
-        if conversation_id:
-            conversation = Conversation.query.filter_by(id=conversation_id, user_id=user.id).first_or_404()
-        else:
-            raw_title = " ".join(
-                p.get("text", "").strip()
-                for p in input_parts
-                if p.get("type") == "input_text"
-            ).strip()
-            title = (raw_title[:60] or "New chat")
-            conversation = Conversation(user_id=user.id, title=title, model_key=model_key)
-            db.session.add(conversation)
-            db.session.flush()
-            conversation_id = conversation.id
-
-        db.session.add(ChatMessage(
-            conversation_id=conversation_id,
-            role="user",
-            content=json.dumps(input_parts)
-        ))
-
-        task_ref = f"PLAYGROUND-{uuid.uuid4()}"
-        task_data = {
-            "user_input_parts": input_parts,
-            "model_key": model_key,
-            "conversation_id": conversation_id,
+        if (DOMElements.promptInput) DOMElements.promptInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } };
+        if (DOMElements.uploadBtn) DOMElements.uploadBtn.onclick = () => DOMElements.fileInput?.click();
+        if (DOMElements.fileInput) DOMElements.fileInput.onchange = (e) => handleFiles(e.target.files);
+        if (DOMElements.dropZone) {
+            DOMElements.dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                DOMElements.dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
+            });
+            DOMElements.dropZone.addEventListener('dragleave', () => {
+                DOMElements.dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+            });
+            DOMElements.dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                DOMElements.dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+                handleFiles(e.dataTransfer.files);
+            });
         }
 
-        new_task = Task(
-            user_id=user.id,
-            external_reference=task_ref,
-            status='queued',
-            diff_data=task_data,
-            input_text="Playground Chat",
-        )
-        db.session.add(new_task)
-        db.session.commit()
-
-        process_playground_chat_task.delay(new_task.id)
-
-        return jsonify({
-            "status": "processing_started",
-            "task_id": new_task.id,
-            "conversation_id": conversation_id
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Playground chat submission error for user {user.id}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to start the chat task."}), 500
-
-@main_bp.route("/get_playground_task_status/<int:task_id>", methods=['GET'])
-@auth_required
-def get_playground_task_status(task_id):
-    task = Task.query.get_or_404(task_id)
-
-    if task.user_id != session['user']['uid']:
-        return jsonify({"error": "Unauthorized"}), 403
-
-    if task.status == 'humanization_complete':
-        final_conversation_id = (task.diff_data or {}).get("final_conversation_id")
-
-        conversation = Conversation.query.get(final_conversation_id) if final_conversation_id else None
-
-        return jsonify({
-            "status": "complete",
-            "response": task.humanized_output,
-            "conversation_id": final_conversation_id,
-            "conversation_title": conversation.title if conversation else "Chat"
-        })
-    elif task.status == 'humanization_failed':
-        return jsonify({
-            "status": "failed",
-            "error": task.error_message
-        })
-    else:
-        return jsonify({"status": "processing"})
-
-@main_bp.route("/humanizer", methods=['GET'])
-@auth_required
-def humanizer_page():
-    user = User.query.get_or_404(session['user']['uid'])
-    if user.is_admin:
-        return redirect(url_for('admin_dashboard.dashboard'))
-    if not user.wallet:
-        db.session.add(Wallet(user=user, balance=0.0))
-        db.session.commit()
-    username = get_display_name(user)
-    firebase_config = {"apiKey": os.getenv("FIREBASE_API_KEY"), "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"), "projectId": os.getenv("FIREBASE_PROJECT_ID"), "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"), "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"), "appId": os.getenv("FIREBASE_APP_ID"), "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")}
-    return render_template('dashboard.html', user=user, username=username, wallet_balance=user.wallet.balance, is_admin=user.is_admin, WORDS_PER_UNIT=WORDS_PER_UNIT, PRICE_PER_UNIT=PRICE_PER_UNIT, ESSAY_PRICE_PER_UNIT=ESSAY_PRICE_PER_UNIT, firebase_config=firebase_config)
-
-@main_bp.route("/playground", methods=['GET'])
-@auth_required
-def playground():
-    user = User.query.get_or_404(session['user']['uid'])
-    username = get_display_name(user)
-    wallet_balance = user.wallet.balance if user.wallet else 0
-
-    models = current_app.config['MODELS']
-
-    return render_template(
-        "playground.html",
-        user=user,
-        username=username,
-        wallet_balance=wallet_balance,
-        is_admin=user.is_admin,
-        models=models
-    )
-
-def _initiate_payment_in_background(app, amount, phone_number, transaction_ref):
-    with app.app_context():
-        try:
-            initiate_payhero_payment(amount, phone_number, transaction_ref)
-        except Exception as e:
-            logger.error(f"Background payment initiation failed for {transaction_ref}: {e}")
-            task = Task.query.filter_by(external_reference=transaction_ref).first()
-            if task:
-                task.status = 'topup_failed'
-                task.error_message = "Failed to communicate with payment gateway."
-                db.session.commit()
-
-@main_bp.route("/wallet/topup", methods=["POST"])
-@auth_required
-def wallet_topup():
-    data = request.get_json()
-    amount, phone_number = data.get("amount"), data.get("phone_number")
-    if not all([amount, phone_number, isinstance(amount, (int, float)), amount > 0]):
-        return jsonify({"status": "error", "message": "Valid amount and phone number are required."}), 400
-    if not KENYAN_PHONE_REGEX.match(phone_number):
-        return jsonify({"status": "error", "message": "Invalid Kenyan phone number format."}), 400
-    transaction_ref = f"TOPUP-{uuid.uuid4()}"
-    temp_task = Task(external_reference=transaction_ref, input_text=f"Top-up of {amount}", phone_number=phone_number,
-                     amount_charged=float(amount), status='topup_pending', user_id=session['user']['uid'])
-    db.session.add(temp_task)
-    db.session.commit()
-    app = current_app._get_current_object()
-    threading.Thread(target=_initiate_payment_in_background, args=(app, float(amount), phone_number, transaction_ref)).start()
-    return jsonify({"status": "payment_initiated", "transaction_id": transaction_ref})
-
-@main_bp.route("/wallet/status/<transaction_id>", methods=["GET"])
-@auth_required
-def get_topup_status(transaction_id):
-    task = Task.query.filter_by(external_reference=transaction_id, user_id=session['user']['uid']).first_or_404()
-    if task.status == 'topup_complete':
-        return jsonify({"status": "complete", "message": "Top-up successful!"})
-    elif task.status == 'topup_failed':
-        return jsonify({"status": "failed", "message": task.error_message or "Top-up was cancelled or failed."})
-    else:
-        return jsonify({"status": "pending", "message": "Awaiting payment confirmation..."})
-
-@main_bp.route("/submit-humanize-task", methods=["POST"])
-def submit_humanize_task():
-    if 'user' in session:
-        return _handle_logged_in_humanization()
-    else:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
-
-def _handle_logged_in_humanization():
-    user = User.query.get_or_404(session['user']['uid'])
-    try:
-        data = request.form
-        input_text = data.get("input_text", "").strip()
-        word_count = count_words(input_text)
-        humanizer_mode = data.get("humanizer_mode", "standard")
-
-        if not input_text:
-            return jsonify({"status": "error", "message": "Text input is required."}), 400
-
-        if humanizer_mode != 'document_formatter' and word_count > MAX_WORDS:
-            return jsonify({"status": "error", "message": f"Input exceeds the maximum of {MAX_WORDS} words."}), 413
-
-        price = ESSAY_PRICE_PER_UNIT if humanizer_mode == 'essay' else PRICE_PER_UNIT
-        amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
-        if user.wallet.balance < amount_to_charge:
-            return jsonify({"status": "error", "message": "Insufficient Funds! Please top up your wallet."}), 402
-
-        transaction_ref = f"TASK-{uuid.uuid4()}"
-        user.wallet.balance -= amount_to_charge
-        db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
-                                     transaction_type='humanize_fee', description=transaction_ref))
-
-        new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
-                        amount_charged=amount_to_charge, status='queued', user_id=user.id,
-                        diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
-        db.session.add(new_task)
-        db.session.commit()
-
-        process_humanization_task.delay(new_task.id)
-
-        return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
-
-    except AllModelsFailedError as e:
-        db.session.rollback()
-        flash(e.message, "danger")
-        return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"An unexpected error occurred during humanization for user {user.id}: {e}", exc_info=True)
-        flash("An unexpected error occurred. Please try again.", "danger")
-        return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
-
-def _handle_anonymous_humanization():
-    data = request.form
-    input_text, phone_number = data.get("input_text", "").strip(), data.get("phone_number", "").strip()
-    word_count = count_words(input_text)
-    humanizer_mode = data.get("humanizer_mode", "standard")
-
-    if not all([input_text, phone_number]):
-        return jsonify({"status": "error", "message": "Text and phone number are required."}), 400
-
-    if humanizer_mode != 'document_formatter' and word_count > MAX_WORDS:
-        return jsonify({"status": "error", "message": f"Input exceeds the maximum of {MAX_WORDS} words."}), 413
-
-    if not KENYAN_PHONE_REGEX.match(phone_number):
-        return jsonify({"status": "error", "message": "Invalid Kenyan phone number format."}), 400
-    price = ESSAY_PRICE_PER_UNIT + 10 if humanizer_mode == 'essay' else PRICE_PER_UNIT + 10
-    amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
-    transaction_ref = f"HUMANIZE-{uuid.uuid4()}"
-    new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number=phone_number,
-                    amount_charged=amount_to_charge, status='payment_pending', user_id=None,
-                    diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
-    db.session.add(new_task)
-    db.session.commit()
-    try:
-        initiate_payhero_payment(amount_to_charge, phone_number, transaction_ref)
-        return jsonify({"status": "payment_initiated", "transaction_id": transaction_ref})
-    except Exception as e:
-        new_task.status, new_task.error_message = 'payment_failed', str(e)
-        db.session.commit()
-        logger.error(f"Anonymous payment failed: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "Payment initiation failed."}), 500
-
-@main_bp.route("/payhero-callback", methods=["POST"])
-def payhero_callback():
-    payload = request.get_json()
-    logger.info(f"Received callback: {payload}")
-    if not payload: return jsonify({'status': 'error', 'message': 'Invalid payload'}), 400
-    response = payload.get('response', {})
-    transaction_ref, status = response.get('ExternalReference'), response.get('Status')
-    amount = float(response.get('Amount', 0))
-    if not transaction_ref: return jsonify({'status': 'success'}), 200
-    if transaction_ref.startswith("TOPUP-"):
-        task = Task.query.filter_by(external_reference=transaction_ref, status='topup_pending').first()
-        if task and task.user:
-            if status == 'Success':
-                user = task.user
-                user.wallet.balance += amount
-                db.session.add(Transaction(wallet_id=user.wallet.id, amount=amount,
-                                            transaction_type='top-up', description=f"M-Pesa top-up from {task.phone_number}"))
-                task.status = 'topup_complete'
-            else:
-                task.status = 'topup_failed'
-                task.error_message = response.get('ResultDesc', 'Top-up was cancelled or failed.')
-            db.session.commit()
-            logger.info(f"Top-up task {task.id} status updated to {task.status}.")
-    elif transaction_ref.startswith("HUMANIZE-"):
-        task = Task.query.filter_by(external_reference=transaction_ref, status='payment_pending').first()
-        if task:
-            if status == 'Success':
-                task.status = 'payment_successful'
-                db.session.commit()
-                app = current_app._get_current_object()
-                from .tasks import process_humanization_in_background
-                threading.Thread(target=process_humanization_in_background, args=(app, task.id)).start()
-                logger.info(f"Anonymous task {task.id} payment successful.")
-            else:
-                task.status = 'payment_failed'
-                task.error_message = response.get('ResultDesc', 'Payment was cancelled or failed.')
-                db.session.commit()
-                logger.info(f"Anonymous task {task.id} payment failed.")
-    return jsonify({'status': 'success'}), 200
-
-@main_bp.route("/get_humanization_status/<transaction_id>", methods=["GET"])
-def get_humanization_status(transaction_id):
-    task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
-    if task.user_id and ('user' not in session or task.user_id != session['user']['uid']):
-        abort(403)
-    response = {"status": task.status, "message": task.error_message or "Processing..."}
-    if task.status == 'humanization_complete':
-        diff_data = task.diff_data or {}
-        output_format = diff_data.get("output_format", "plain_text")
-        if output_format != 'plain_text':
-            response.update({"status": "download_ready", "download_url": url_for('main.download_formatted_doc', transaction_id=task.external_reference)})
-        else:
-            response.update({"status": "complete", "humanized_output": task.humanized_output, "output_word_count": task.output_word_count, "diff_data": diff_data})
-    return jsonify(response)
-
-@main_bp.route("/download_formatted_doc/<transaction_id>", methods=["GET"])
-def download_formatted_doc(transaction_id):
-    task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
-    if task.user_id and ('user' not in session or task.user_id != session['user']['uid']):
-        abort(403)
-    if task.status != 'humanization_complete':
-        flash("Document is not yet ready for download.", "danger")
-        return redirect(url_for('main.home'))
-
-    output_dir = "/tmp" if os.environ.get("FLASK_ENV") == "production" else "output_docs"
-    os.makedirs(output_dir, exist_ok=True)
-
-    diff_data = task.diff_data or {}
-    title = diff_data.get('generated_title') or "Processed document"
-    filename = f"{sanitize_filename(title)}.docx"
-    filepath = os.path.join(output_dir, filename)
-
-    metadata = {'title': title, 'author': "Name", 'date': datetime.now(NAIROBI_TZ).strftime("%d %B %Y")}
-    references = diff_data.get('formatted_references', [])
-
-    if create_formatted_document(diff_data.get('output_format'), task.humanized_output, filepath, metadata, references):
-        return send_file(filepath, as_attachment=True)
-
-    flash("Failed to generate the document.", "danger")
-    return redirect(url_for('main.home'))
-
-@main_bp.route("/task/details/<transaction_id>")
-@auth_required
-def view_task_details(transaction_id):
-    logger.info(f"--- Entering view_task_details for transaction_id: {transaction_id} ---")
-    task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
-    user = User.query.get_or_404(session['user']['uid'])
-    if not user.is_admin and (task.user_id != user.id):
-        logger.warning(f"User {user.id} attempting to access unauthorized task {task.id}.")
-        abort(403)
-
-    html_output = "Error: Could not render task output."
-    diff_data = task.diff_data or {}
-    logger.debug(f"Task {task.id} diff_data loaded: {diff_data}")
-
-    try:
-        if task.status != 'humanization_complete':
-            logger.warning(f"Task {task.id} is not complete. Status is '{task.status}'. Redirecting.")
-            flash("This task is not yet complete.", "danger")
-            return redirect(request.referrer or url_for('main.home'))
-
-        output_format = diff_data.get('output_format')
-        logger.debug(f"Task {task.id} output_format is '{output_format}'.")
-
-        if output_format != 'plain_text':
-            logger.warning(f"Task {task.id} has a non-HTML output format ('{output_format}'). Redirecting.")
-            flash("This task result is not available for HTML viewing.", "danger")
-            return redirect(request.referrer or url_for('main.home'))
-
-        word_diff = diff_data.get('word_diff')
-        logger.debug(f"Task {task.id} word_diff data: {word_diff}")
-
-        if isinstance(word_diff, list):
-            final_html_parts = []
-            current_paragraph_spans = []
-
-            for d in word_diff:
-                text_segment = d.get("text", "")
-                diff_type = d.get("type", "equal")
-                css_class = "word-added" if diff_type == "added" else "word-equal"
-
-                parts = text_segment.split("[[PARAGRAPH_BREAK]]")
-
-                if parts[0].strip():
-                    current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
-
-                if len(parts) > 1:
-                    for i in range(1, len(parts)):
-                        if current_paragraph_spans:
-                            final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-
-                        current_paragraph_spans = []
-                        if parts[i].strip():
-                            current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
-
-            if current_paragraph_spans:
-                final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-
-            html_output = "".join(final_html_parts)
-            logger.info("Successfully generated HTML from word_diff with robust paragraph construction.")
-        elif task.humanized_output:
-            logger.info(f"Task {task.id} has no word_diff, falling back to raw humanized_output.")
-            paragraphs = task.humanized_output.split('\n\n')
-            final_paragraphs = []
-            for p in paragraphs:
-                p_with_br = p.replace("\n", "<br>")
-                final_paragraphs.append(f'<p style="text-indent: 0;">{p_with_br}</p>')
-            html_output = "".join(final_paragraphs)
-
-        else:
-            logger.error(f"Task {task.id} has no word_diff and no humanized_output.")
-            html_output = "Error: No output data found for this task."
-
-    except Exception as e:
-        logger.error(f"FATAL: Could not render HTML for task {transaction_id}. Error: {e}", exc_info=True)
-        flash("An unexpected error occurred while trying to display this task.", "danger")
-        return redirect(request.referrer or url_for('main.home'))
-
-    username = get_display_name(user)
-    back_url = url_for('main.transaction_history')
-    humanizer_mode = diff_data.get('humanizer_mode', 'N/A').replace('_', ' ').title()
-
-    logger.info(f"--- Rendering template 'view_task.html' for task {transaction_id} ---")
-    return render_template("view_task.html", task=task, username=username, html_output=html_output, back_url=back_url, humanizer_mode=humanizer_mode)
-
-@main_bp.route("/instructions")
-def instructions():
-    user = User.query.get(session['user']['uid']) if 'user' in session else None
-    username = get_display_name(user) if user else None
-    wallet_balance = user.wallet.balance if user and user.wallet else 0
-    is_admin = user.is_admin if user else False
-    return render_template("instructions.html",
-                           user=user,
-                           username=username,
-                           wallet_balance=wallet_balance,
-                           is_admin=is_admin)
-
-@main_bp.route("/admin/topup", methods=["POST"])
-@auth_required
-def admin_self_topup():
-    user = User.query.get(session['user']['uid'])
-    if not user or not user.is_admin:
-        abort(403)
-
-    data = request.get_json()
-    amount = data.get("amount")
-
-    if not isinstance(amount, (int, float)) or not (0 < amount <= 10000):
-        return jsonify({"status": "error", "message": "Invalid amount. Must be between 0.01 and 10,000."}), 400
-
-    user.wallet.balance += amount
-    db.session.add(Transaction(
-        wallet_id=user.wallet.id,
-        amount=amount,
-        transaction_type='admin_self_topup',
-        description=f'Admin self top-up by {user.email}'
-    ))
-    db.session.commit()
-
-    flash(f"Successfully added KSh {amount:.2f} to your wallet.", "success")
-    return jsonify({"status": "success", "new_balance": user.wallet.balance})
-
-@main_bp.route("/contact")
-def contact():
-    user = User.query.get(session['user']['uid']) if 'user' in session else None
-    username = get_display_name(user) if user else None
-    wallet_balance = user.wallet.balance if user and user.wallet else 0
-    is_admin = user.is_admin if user else False
-
-    return render_template("contact.html",
-                           user=user,
-                           whatsapp_number=WHATSAPP_NUMBER,
-                           username=username,
-                           wallet_balance=wallet_balance,
-                           is_admin=is_admin)
-
-@main_bp.route("/get_conversations", methods=['GET'])
-@auth_required
-def get_conversations():
-    user = User.query.get_or_404(session['user']['uid'])
-    query = request.args.get('q', '')
-    page = request.args.get('page', 1, type=int)
-    per_page = 7
-
-    base_query = Conversation.query.filter_by(user_id=user.id)
-
-    if query:
-        base_query = base_query.filter(Conversation.title.ilike(f'%{query}%'))
-
-    paginated_convs = base_query.order_by(Conversation.created_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-
-    conversations_data = [
-        {"id": conv.id, "title": conv.title}
-        for conv in paginated_convs.items
-    ]
-
-    return jsonify({
-    'conversations': conversations_data,
-    'total_pages': paginated_convs.pages,
-    'current_page': paginated_convs.page,
-    'has_next': paginated_convs.has_next,
-    'has_prev': paginated_convs.has_prev
-    })
-
-@main_bp.route("/conversation/<int:conv_id>", methods=['GET'])
-@auth_required
-def get_conversation_messages(conv_id):
-    user = User.query.get_or_404(session['user']['uid'])
-    conversation = Conversation.query.filter_by(id=conv_id, user_id=user.id).first_or_404()
-    messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
-    message_list = [{"role": msg.role, "content": msg.content} for msg in messages]
-    return jsonify(message_list)
-
-@main_bp.route("/conversation/<int:conv_id>", methods=['DELETE'])
-@auth_required
-def delete_conversation(conv_id):
-    user = User.query.get_or_404(session['user']['uid'])
-    conversation = Conversation.query.filter_by(id=conv_id, user_id=user.id).first()
-    if conversation:
-        db.session.delete(conversation)
-        db.session.commit()
-        return jsonify({"status": "success", "message": "Conversation deleted."}), 200
-    return jsonify({"status": "error", "message": "Conversation not found or you do not have permission to delete it."}), 404
-
-@main_bp.route('/extract_text_from_file', methods=['POST'])
-@auth_required
-def extract_text_from_file():
-    if not check_rate_limit():
-        return jsonify({"error": "You are uploading too frequently. Please wait a moment."}), 429
-
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-
-    if not is_extension_allowed(file.filename):
-        return jsonify({"error": "This file type is not supported or is blocked for security reasons."}), 400
-
-    filename = secure_filename(file.filename)
-    file_bytes = file.read()
-    file.seek(0)
-
-    try:
-        if filename.lower().endswith('.zip'):
-            combined_text = f"--- Contents of {filename} ---\n\n"
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-                # Scan for blocked files inside the ZIP first
-                for file_info in z.infolist():
-                    if '.' in file_info.filename and file_info.filename.rsplit('.', 1)[1].lower() in BLOCKED_EXTENSIONS:
-                        ext = file_info.filename.rsplit('.', 1)[1].lower()
-                        return jsonify({"error": f"Upload failed. Executable file type (.{ext}) found inside ZIP."}), 400
-
-                # If scan passes, proceed with extraction
-                for file_info in z.infolist():
-                    if file_info.is_dir():
-                        continue
-                    with z.open(file_info) as f:
-                        file_content_bytes = f.read()
-                        doc_text = f"\n--- File: {file_info.filename} ---\n"
-
-                        if file_info.filename.lower().endswith('.docx'):
-                            if b"EncryptedPackage" in file_content_bytes:
-                                doc_text += "[File is encrypted and cannot be read]\n"
-                            else:
-                                doc = docx.Document(io.BytesIO(file_content_bytes))
-                                doc_text += "".join(p.text + "\n" for p in doc.paragraphs)
-
-                        elif file_info.filename.lower().endswith('.pdf'):
-                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content_bytes))
-                            if pdf_reader.is_encrypted:
-                                doc_text += "[File is encrypted and cannot be read]\n"
-                            else:
-                                doc_text += "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
-
-                        else: # For all other non-blocked files, including code, treat them as plain text
-                            doc_text += file_content_bytes.decode('utf-8', errors='ignore')
-
-                        combined_text += doc_text
-            return jsonify({"text": combined_text})
-
-        elif filename.lower().endswith('.docx'):
-            if b"EncryptedPackage" in file_bytes:
-                return jsonify({"error": "This DOCX file is encrypted and cannot be processed."}), 400
-            doc = docx.Document(io.BytesIO(file_bytes))
-            extracted_text = "".join(p.text + "\n" for p in doc.paragraphs)
-            return jsonify({"text": extracted_text})
-
-        elif filename.lower().endswith('.pdf'):
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-            if pdf_reader.is_encrypted:
-                return jsonify({"error": "This PDF file is encrypted and cannot be processed."}), 400
-            extracted_text = "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
-            return jsonify({"text": extracted_text})
-
-        elif filename.lower().endswith('.txt'):
-            extracted_text = file_bytes.decode('utf-8', errors='ignore')
-            return jsonify({"text": extracted_text})
-
-        elif filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'webp', 'gif'}:
-            return jsonify({"text": f"[Image '{filename}' attached]"})
-
-    except Exception as e:
-        logger.error(f"Error processing file {filename}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to process file. It may be corrupt or in an unsupported format."}), 500
-
-    return jsonify({"error": "File could not be processed."}), 500
+        startNewChat();
+        fetchConversations();
+        setupModelSelector();
+    }
+
+
+    //======================================================================
+    //== HUMANIZER LOGIC
+    //======================================================================
+    function initializeHumanizer() {
+        const AppState = {
+            isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
+            pollingInterval: null,
+            isPolling: false,
+            alertTimeout: null,
+            transactionId: null,
+            pollingRetries: 0
+        };
+        const WORDS_PER_UNIT = window.FLASK_WORDS_PER_UNIT || 100;
+        const PRICE_PER_UNIT = window.FLASK_PRICE_PER_UNIT || 10;
+        const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 15;
+        const MIN_WORDS = 275;
+        const MAX_WORDS = 1925;
+        const POLLING_RATE = 3000;
+        const ALERT_DURATION = 5000;
+
+        const DOMElements = {
+            humanizeForm: document.getElementById('humanizeForm'),
+            inputText: document.getElementById('input_text'),
+            wordCountDisplay: document.getElementById('input_word_count_display'),
+            estimatedCostDisplay: document.getElementById('estimated_cost_display'),
+            humanizeBtn: document.getElementById('openPaymentModalBtn'),
+            paymentModal: document.getElementById('paymentModal'),
+            closeMpesaModalBtn: document.getElementById('closeMpesaModalBtn'),
+            phoneInput: document.getElementById('phone_number_modal'),
+            submitPaymentBtn: document.getElementById('submitPaymentBtn'),
+            outputSection: document.getElementById('humanized_output_section'),
+            outputDisplay: document.getElementById('humanized_output_display'),
+            outputPlaceholder: document.getElementById('output_placeholder'),
+            typingText: document.getElementById('typing-text'),
+            outputWordCount: document.getElementById('output_word_count_value'),
+            copyBtn: document.getElementById('copyButton'),
+            resetBtn: document.getElementById('resetBtn'),
+            jsAlertContainer: document.getElementById('js-alert-container'),
+            jsAlertMessage: document.getElementById('js-alert-message'),
+            modeBtn: document.getElementById('modeBtn'),
+            formatBtn: document.getElementById('formatBtn'),
+            dialectBtn: document.getElementById('dialectBtn'),
+            modePopup: document.getElementById('modePopup'),
+            formatPopup: document.getElementById('formatPopup'),
+            dialectPopup: document.getElementById('dialectPopup'),
+            modeDisplay: document.getElementById('mode_display'),
+            formatDisplay: document.getElementById('format_display'),
+            dialectDisplay: document.getElementById('dialect_display'),
+            humanizerModeRadios: document.querySelectorAll('input[name="humanizer_mode"]'),
+            outputFormatRadios: document.querySelectorAll('input[name="output_format"]'),
+            englishDialectRadios: document.querySelectorAll('input[name="english_dialect"]'),
+            bibtexInput: document.getElementById('bibtex_input'),
+            toggleReferencesBtn: document.getElementById('toggleReferencesBtn'),
+            referencesSection: document.getElementById('references_section'),
+        };
+
+        const typeAnimation = {
+            element: DOMElements.typingText,
+            text: "Humanized content will appear here!",
+            speed: 75,
+            currentIndex: 0,
+            intervalId: null,
+            start: function() {
+                if (!this.element) return;
+                this.reset();
+                this.intervalId = setInterval(() => {
+                    if (this.currentIndex < this.text.length) {
+                        this.element.textContent += this.text.charAt(this.currentIndex);
+                        this.currentIndex++;
+                    } else {
+                        this.stop();
+                    }
+                }, this.speed);
+            },
+            stop: function() { clearInterval(this.intervalId); },
+            reset: function() {
+                this.stop();
+                if (this.element) this.element.textContent = '';
+                this.currentIndex = 0;
+            }
+        };
+        
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            navigator.clipboard.writeText(element.innerText).then(() => UI.showAlert('Copied!', 'success'));
+        }
+
+        const UI = {
+            showAlert: (message, type = 'info') => {
+                if (AppState.alertTimeout) clearTimeout(AppState.alertTimeout);
+                const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
+                if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
+                if (DOMElements.jsAlertContainer) {
+                    DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
+                    DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
+                }
+                AppState.alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), ALERT_DURATION);
+            },
+            updateWordCountAndCost: () => {
+                if (!DOMElements.inputText) return;
+                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
+                const humanizerMode = document.querySelector('input[name="humanizer_mode"]:checked')?.value || 'standard';
+                const currentPrice = (humanizerMode === 'essay') ? ESSAY_PRICE_PER_UNIT : PRICE_PER_UNIT;
+                const cost = (words / WORDS_PER_UNIT) * currentPrice;
+                if (DOMElements.wordCountDisplay) DOMElements.wordCountDisplay.textContent = words;
+                if (DOMElements.estimatedCostDisplay) DOMElements.estimatedCostDisplay.textContent = `KSh ${cost.toFixed(2)}`;
+            },
+            updateFormattingOptions: () => {
+                const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
+                const selectedFormat = document.querySelector('input[name="output_format"]:checked');
+                document.querySelectorAll('input[name="humanizer_mode"], input[name="output_format"]').forEach(radio => {
+                    if (document.querySelector(`label[for="${radio.id}"]`)) {
+                        radio.disabled = false;
+                        document.querySelector(`label[for="${radio.id}"]`).classList.remove('disabled');
+                    }
+                });
+                if (selectedMode) {
+                    if (selectedMode.value === 'standard') {
+                        document.querySelectorAll('input[name="output_format"]').forEach(radio => {
+                            if (['apa_7', 'mla_9', 'harvard'].includes(radio.value)) {
+                                radio.disabled = true;
+                                document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
+                            }
+                        });
+                    } else if (['essay', 'document_formatter'].includes(selectedMode.value)) {
+                        const plainTextRadio = document.querySelector('input[value="plain_text"]');
+                        if (plainTextRadio) {
+                            plainTextRadio.disabled = true;
+                            document.querySelector('label[for="plain_text_output"]').classList.add('disabled');
+                        }
+                    }
+                }
+                if (selectedFormat) {
+                    if (['apa_7', 'mla_9', 'harvard'].includes(selectedFormat.value)) {
+                        const standardRadio = document.querySelector('input[value="standard"]');
+                        if (standardRadio) {
+                            standardRadio.disabled = true;
+                            document.querySelector('label[for="mode_standard"]').classList.add('disabled');
+                        }
+                    } else if (selectedFormat.value === 'plain_text') {
+                        document.querySelectorAll('input[name="humanizer_mode"]').forEach(radio => {
+                            if (['essay', 'document_formatter'].includes(radio.value)) {
+                                radio.disabled = true;
+                                document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
+                            }
+                        });
+                    }
+                }
+                const isDocx = selectedFormat && selectedFormat.value !== 'plain_text';
+                DOMElements.toggleReferencesBtn?.classList.toggle('hidden', !isDocx);
+                if (!isDocx) DOMElements.referencesSection?.classList.add('hidden');
+            },
+            resetSelections: () => {
+                if (DOMElements.inputText) DOMElements.inputText.value = '';
+                if (DOMElements.bibtexInput) DOMElements.bibtexInput.value = '';
+                if (DOMElements.referencesSection) DOMElements.referencesSection.classList.add('hidden');
+                if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = '';
+                if (DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = '0';
+                if (DOMElements.copyBtn) DOMElements.copyBtn.style.display = 'none';
+                if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'flex';
+                typeAnimation.start();
+                if (DOMElements.outputSection) DOMElements.outputSection.classList.add('mobile-hidden');
+                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
+                if(DOMElements.modeDisplay) DOMElements.modeDisplay.textContent = 'Mode';
+                if(DOMElements.formatDisplay) DOMElements.formatDisplay.textContent = 'Format';
+                if(DOMElements.dialectDisplay) DOMElements.dialectDisplay.textContent = 'Dialect';
+                document.querySelectorAll('.popup-trigger').forEach(btn => btn.classList.add('placeholder'));
+                UI.updateFormattingOptions();
+                UI.updateWordCountAndCost();
+            },
+            showProcessing: (message) => {
+                if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'none';
+                typeAnimation.stop();
+                const loadingHtml = `<div id="loading-spinner" class="loading-in-output"><div class="spinner"></div><span class="mt-2">${message || "Processing..."}</span></div>`;
+                if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = loadingHtml;
+                if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = true;
+            },
+            hideProcessing: () => { if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false; },
+            renderOutput: (data) => {
+                if (data.download_url) {
+                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = `<a href="${data.download_url}" class="download-link">Click here to download your document</a>`;
+                } else {
+                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_output.replace(/\n/g, '<br>');
+                }
+                if(DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = data.output_word_count;
+                if(DOMElements.copyBtn && !data.download_url) DOMElements.copyBtn.style.display = 'block';
+            },
+            openAnonymousPaymentModal: () => {
+                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
+                const cost = (words / WORDS_PER_UNIT) * PRICE_PER_UNIT;
+                if(document.getElementById('modal_word_count_display')) document.getElementById('modal_word_count_display').textContent = words;
+                if(document.getElementById('modal_estimated_cost_display')) document.getElementById('modal_estimated_cost_display').textContent = cost.toFixed(2);
+                DOMElements.paymentModal?.classList.remove('hidden');
+            },
+            closeAnonymousPaymentModal: () => DOMElements.paymentModal?.classList.add('hidden'),
+        };
+
+        const Actions = {
+            submitHumanization: async () => {
+                const formData = new FormData(DOMElements.humanizeForm);
+                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
+                if (words < MIN_WORDS) return UI.showAlert(`Input must be at least ${MIN_WORDS} words.`, 'danger');
+                if (!AppState.isLoggedIn) {
+                    const phone = DOMElements.phoneInput.value.trim();
+                    if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return UI.showAlert('Invalid phone number.', 'danger');
+                    formData.set('phone_number', phone);
+                    UI.closeAnonymousPaymentModal();
+                }
+                UI.showProcessing('Processing request...');
+                try {
+                    const response = await fetch('/submit-humanize-task', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'Error.');
+                    AppState.transactionId = data.transaction_id;
+                    Actions.startPolling();
+                } catch (error) {
+                    UI.showAlert(error.message, 'danger');
+                    UI.hideProcessing();
+                }
+            },
+            
+            checkStatus: async () => {
+                if (!AppState.transactionId) return;
+                try {
+                    const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
+                    
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            AppState.pollingRetries++;
+                            if (AppState.pollingRetries > 10) {
+                                throw new Error('Task could not be found. Please contact support.');
+                            }
+                            console.warn(`Task not found yet (attempt ${AppState.pollingRetries}), retrying...`);
+                            return;
+                        }
+                        throw new Error('Server returned an error.');
+                    }
+                    
+                    AppState.pollingRetries = 0;
+                    
+                    const data = await response.json();
+
+                    if (data.status === 'complete' || data.status === 'download_ready') {
+                        Actions.stopPolling();
+                        UI.renderOutput(data);
+                        if (data.diff_data && data.diff_data.refund_info) {
+                            UI.showAlert(data.diff_data.refund_info, 'info');
+                        } else {
+                            UI.showAlert('Task complete!', 'success');
+                        }
+                    } else if (data.status === 'humanization_failed') {
+                        Actions.stopPolling();
+                        UI.resetSelections();
+                        UI.showAlert(data.message || 'Processing failed. A full refund has been issued.', 'danger');
+                    }
+                } catch (error) {
+                    Actions.stopPolling();
+                    UI.showAlert(error.message || 'Error checking status.', 'danger');
+                }
+            },
+
+            startPolling: () => {
+                if (AppState.isPolling) return;
+                AppState.pollingRetries = 0;
+                AppState.pollingInterval = setInterval(Actions.checkStatus, POLLING_RATE);
+                AppState.isPolling = true;
+            },
+            stopPolling: () => {
+                clearInterval(AppState.pollingInterval);
+                AppState.isPolling = false;
+                UI.hideProcessing();
+            },
+        };
+
+        const setupPopup = (button, popup, display, radios) => {
+            if (!button || !popup || !display || !radios) return;
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.popup-menu').forEach(p => { if (p !== popup) p.classList.add('hidden'); });
+                popup.classList.toggle('hidden');
+            });
+            radios.forEach(radio => radio.addEventListener('change', () => {
+                display.textContent = radio.nextElementSibling.textContent;
+                button.classList.remove('placeholder');
+                popup.classList.add('hidden');
+                UI.updateFormattingOptions();
+                UI.updateWordCountAndCost();
+            }));
+        };
+
+        if (DOMElements.humanizeForm) {
+            DOMElements.inputText.oninput = UI.updateWordCountAndCost;
+            if (DOMElements.copyBtn) DOMElements.copyBtn.onclick = () => copyToClipboard('humanized_output_display');
+            if (DOMElements.resetBtn) DOMElements.resetBtn.onclick = UI.resetSelections;
+            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.onclick = () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
+            if (DOMElements.submitPaymentBtn) DOMElements.submitPaymentBtn.onclick = Actions.submitHumanization;
+            if (DOMElements.closeMpesaModalBtn) DOMElements.closeMpesaModalBtn.onclick = UI.closeAnonymousPaymentModal;
+            
+            if (DOMElements.toggleReferencesBtn && DOMElements.referencesSection) {
+                DOMElements.toggleReferencesBtn.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    DOMElements.referencesSection.classList.toggle('hidden');
+                });
+            }
+
+            setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
+            setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
+            setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
+            
+            document.body.addEventListener('click', (e) => {
+                if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
+            });
+
+            UI.resetSelections();
+            const textToHumanize = localStorage.getItem('textToHumanize');
+            if (textToHumanize) {
+                DOMElements.inputText.value = textToHumanize;
+                UI.updateWordCountAndCost();
+                localStorage.removeItem('textToHumanize');
+            }
+        }
+    }
+})
