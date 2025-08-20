@@ -842,19 +842,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'flex';
                 typeAnimation.start();
                 if (DOMElements.outputSection) DOMElements.outputSection.classList.add('mobile-hidden');
-                
-                // --- Set Default Selections ---
-                document.getElementById('mode_standard').checked = true;
-                document.getElementById('plain_text_output').checked = true;
-                document.getElementById('dialect_us').checked = true;
-                
-                // --- Update Displays and Button for Defaults ---
-                if (DOMElements.modeDisplay) DOMElements.modeDisplay.textContent = 'Standard';
-                if (DOMElements.formatDisplay) DOMElements.formatDisplay.textContent = 'Plain Text';
-                if (DOMElements.dialectDisplay) DOMElements.dialectDisplay.textContent = 'US English';
-                document.querySelectorAll('.popup-trigger').forEach(btn => btn.classList.remove('placeholder'));
-                if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.textContent = 'Humanize';
-
+                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
+                if(DOMElements.modeDisplay) DOMElements.modeDisplay.textContent = 'Mode';
+                if(DOMElements.formatDisplay) DOMElements.formatDisplay.textContent = 'Format';
+                if(DOMElements.dialectDisplay) DOMElements.dialectDisplay.textContent = 'Dialect';
+                document.querySelectorAll('.popup-trigger').forEach(btn => btn.classList.add('placeholder'));
                 UI.updateFormattingOptions();
                 UI.updateWordCountAndCost();
             },
@@ -867,11 +859,10 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             hideProcessing: () => { if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false; },
             renderOutput: (data) => {
-                // --- MODIFICATION: Make download link indigo ---
                 if (data.download_url) {
                     if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = `<a href="${data.download_url}" class="download-link text-indigo-600 hover:text-indigo-900 font-semibold">Click here to download your document</a>`;
                 } else {
-                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_output; // Already contains HTML
+                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_output;
                 }
                 if(DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = data.output_word_count;
                 if(DOMElements.copyBtn && !data.download_url) DOMElements.copyBtn.style.display = 'block';
@@ -888,6 +879,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const Actions = {
             submitHumanization: async () => {
+                // --- NEW: Validation Check ---
+                const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
+                const selectedFormat = document.querySelector('input[name="output_format"]:checked');
+                const selectedDialect = document.querySelector('input[name="english_dialect"]:checked');
+
+                if (!selectedMode || !selectedFormat || !selectedDialect) {
+                    return UI.showAlert('Please select a Mode, Format, and Dialect before proceeding.', 'danger');
+                }
+                // --- END VALIDATION ---
+
                 const formData = new FormData(DOMElements.humanizeForm);
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
                 if (words < MIN_WORDS) return UI.showAlert(`Input must be at least ${MIN_WORDS} words.`, 'danger');
@@ -977,7 +978,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 UI.updateFormattingOptions();
                 UI.updateWordCountAndCost();
 
-                // --- MODIFICATION: Change button text based on mode ---
                 if (radio.name === 'humanizer_mode') {
                     if (radio.value === 'document_formatter') {
                         DOMElements.humanizeBtn.textContent = 'Process';
