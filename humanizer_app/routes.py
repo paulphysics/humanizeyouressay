@@ -1,4 +1,3 @@
-# humanizer_app/routes.py
 import os
 import PyPDF2
 import docx
@@ -11,13 +10,19 @@ import logging
 import time
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
-                   redirect, url_for, flash, current_app, session, abort)
+                 redirect, url_for, flash, current_app, session, abort)
 from werkzeug.utils import secure_filename
 import zipfile
 from werkzeug.exceptions import RequestEntityTooLarge
 from sqlalchemy import desc, or_
 import pytz
 import difflib
+
+# --- NEW IMPORTS FOR INTERNET SEARCH ---
+import requests
+from bs4 import BeautifulSoup
+from googlesearch import search as google_search
+# --- END NEW IMPORTS ---
 
 from .extensions import db
 from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage
@@ -159,9 +164,9 @@ def transaction_history():
 
     for t in transactions:
         if hasattr(t, 'created_at') and t.created_at:
-             t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
+                 t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
         else:
-             t.created_at_local_str = 'N/A'
+                 t.created_at_local_str = 'N/A'
 
         t.task = None
         t.display_title = t.description or 'N/A'
@@ -197,6 +202,7 @@ def transaction_history():
                            wallet_balance=user.wallet.balance,
                            is_admin=user.is_admin)
 
+# --- UPDATED playground_chat FUNCTION ---
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
 def playground_chat():
@@ -208,6 +214,65 @@ def playground_chat():
 
     if not isinstance(input_parts, list) or not input_parts:
         return jsonify({"error": "No input provided."}), 400
+
+    # --- ADVANCED INTERNET SEARCH LOGIC ---
+    user_prompt_text = ""
+    text_part_index = -1
+    for i, part in enumerate(input_parts):
+        if part.get("type") == "input_text":
+            user_prompt_text = part.get("text", "").strip()
+            text_part_index = i
+            break
+
+    if user_prompt_text.lower().startswith('/search '):
+        search_query = user_prompt_text[8:]
+        try:
+            search_results = list(google_search(search_query, num_results=3, sleep_interval=2))
+            
+            if search_results:
+                top_url = search_results[0]
+                verbatim_snippet = ""
+                
+                # Fetch and parse the content of the top URL
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    response = requests.get(top_url, timeout=10, headers=headers)
+                    response.raise_for_status() # Raise an exception for bad status codes
+                    
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    paragraphs = soup.find_all('p')
+                    
+                    # Extract text from the first 5 paragraphs to form the snippet
+                    snippet_parts = [p.get_text() for p in paragraphs[:5]]
+                    verbatim_snippet = "\n".join(snippet_parts).strip()
+
+                except requests.RequestException as e:
+                    logger.error(f"Failed to fetch URL {top_url}: {e}")
+                    verbatim_snippet = "Could not retrieve content from the source."
+                except Exception as e:
+                    logger.error(f"Error parsing content from {top_url}: {e}")
+                    verbatim_snippet = "Could not parse content from the source."
+
+                # Construct the new, detailed prompt for the AI
+                if text_part_index != -1:
+                    original_prompt = input_parts[text_part_index]['text']
+                    
+                    # Create the final prompt with clear instructions
+                    final_prompt = (
+                        f"Please answer the user's query based on the provided search result.\n"
+                        f"Your response should be structured in two parts:\n"
+                        f"1.  **Assessment:** Your own summary and analysis of the information.\n"
+                        f"2.  **Verbatim Text:** The exact, unmodified text snippet from the source.\n\n"
+                        f"--- Source URL ---\n{top_url}\n\n"
+                        f"--- Verbatim Snippet from Source ---\n\"{verbatim_snippet}\"\n\n"
+                        f"--- User's Original Prompt ---\n{original_prompt}"
+                    )
+                    input_parts[text_part_index]['text'] = final_prompt
+
+        except Exception as e:
+            logger.error(f"Internet search failed for query '{search_query}': {e}", exc_info=True)
+            pass
+    # --- END OF UPDATED LOGIC ---
 
     try:
         if conversation_id:
