@@ -213,6 +213,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // --- NEW: Improved typing animation function ---
+        const typeResponse = (messageContainer, messageBubble, text) => {
+            let i = 0;
+            messageBubble.innerHTML = ""; // Clear the "Thinking..." placeholder
+            const typingInterval = setInterval(() => {
+                if (i <= text.length) {
+                    let currentText = text.substring(0, i);
+                    messageBubble.innerHTML = markdownToHtml(currentText);
+                    i++;
+                    DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+                } else {
+                    clearInterval(typingInterval);
+                    // Final processing after animation is complete
+                    addMessageActions(messageContainer, text);
+                    highlightCodeBlocks(); // Ensure code is highlighted if markdown creates it
+                }
+            }, 30); // Adjusted speed
+        };
+
         const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
             let attempts = 0;
             pollingInterval = setInterval(async () => {
@@ -234,9 +253,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = await response.json();
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
-                        messageBubble.innerHTML = markdownToHtml(data.response);
-                        highlightCodeBlocks();
-                        addMessageActions(messageContainer, data.response);
+                        
+                        if (data.response.includes('```')) {
+                            messageBubble.innerHTML = markdownToHtml(data.response);
+                            highlightCodeBlocks();
+                            addMessageActions(messageContainer, data.response);
+                        } else {
+                            typeResponse(messageContainer, messageBubble, data.response);
+                        }
+
                         showProcessing(false);
                         
                         if (data.conversation_title) {
