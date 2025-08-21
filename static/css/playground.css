@@ -206,3 +206,17 @@ pre:hover .code-copy-btn {
     background-color: #e0e7ff; /* Tailwind's indigo-100 */
     color: #4f46e5; /* Tailwind's indigo-600 */
 }
+
+/* In static/css/playground.css */
+
+/* ... (add this at the end of the file) ... */
+
+.bot-message a {
+    color: #4f46e5; /* Tailwind's indigo-600 */
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.bot-message a:hover {
+    color: #3730a3; /* Tailwind's indigo-800 */
+}
