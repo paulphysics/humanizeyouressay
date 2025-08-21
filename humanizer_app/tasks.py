@@ -158,13 +158,13 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
-        # --- NEW: System prompt to enforce codeblock formatting ---
+        # --- UPDATED: System prompt to enforce Markdown formatting ---
         system_prompt = {
             "role": "system",
-            "content": "You are a helpful assistant. For all code snippets, please use markdown code blocks (e.g., ```python ... ```) to ensure proper formatting."
+            "content": "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```)."
         }
         final_messages = [system_prompt] + message_history
-        # --- END OF NEW LOGIC ---
+        # --- END OF UPDATED LOGIC ---
 
         response = openai_client.chat.completions.create(
             model=model_info['api_id'],
