@@ -229,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     addMessageActions(messageContainer, text);
                     highlightCodeBlocks(); // Ensure code is highlighted if markdown creates it
                 }
-            }, 30); // Adjusted speed
+            }, 15); // Adjusted speed
         };
 
         const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
