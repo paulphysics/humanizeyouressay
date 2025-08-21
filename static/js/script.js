@@ -97,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //== PLAYGROUND LOGIC
     //======================================================================
     function initializePlayground() {
-        let isInternetSearchActive = false; // State for the internet toggle
         let alertTimeout = null;
         const ALERT_DURATION = 5000;
         let isFetchingHistory = false;
@@ -132,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dropZone: document.getElementById('drop-zone'),
             conversationIdInput: document.getElementById('conversation-id-storage'),
             clearHistoryBtn: document.getElementById('clear-history-btn'),
-            internetSearchToggle: document.getElementById('internet-search-toggle'), // Added toggle button
         };
 
         const sidebarOverlay = document.createElement('div');
@@ -261,14 +259,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }, 3000);
         };
-
-        // --- NEW: Function to handle the internet toggle ---
-        const toggleInternetSearch = () => {
-            isInternetSearchActive = !isInternetSearchActive;
-            if (DOMElements.internetSearchToggle) {
-                DOMElements.internetSearchToggle.classList.toggle('search-active', isInternetSearchActive);
-            }
-        };
         
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
@@ -310,8 +300,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
                 const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
                 if (!selectedModel) throw new Error('Please select a model.');
-                
-                // --- MODIFIED: Send toggle state to backend ---
                 const response = await fetch('/playground_chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -319,15 +307,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         model: selectedModel,
                         input: userInputPayload,
                         conversation_id: currentConversationId,
-                        internet_search_enabled: isInternetSearchActive 
                     })
                 });
-
-                // --- NEW: Reset the toggle after sending ---
-                if (isInternetSearchActive) {
-                    toggleInternetSearch();
-                }
-
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
 
@@ -681,12 +662,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
         if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
         if (DOMElements.clearHistoryBtn) DOMElements.clearHistoryBtn.addEventListener('click', clearAllConversations);
-        
-        // --- NEW: Event listener for the internet toggle ---
-        if (DOMElements.internetSearchToggle) {
-            DOMElements.internetSearchToggle.addEventListener('click', toggleInternetSearch);
-        }
-
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleHistorySidebar);
         if (DOMElements.searchHistoryInput) {
             let searchTimeout;
