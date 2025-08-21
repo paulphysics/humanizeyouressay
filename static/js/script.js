@@ -39,7 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
                 DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
             }
-            alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), 5000);
+            // MODIFICATION: Only set a timeout for non-info alerts
+            if (type !== 'info') {
+                alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), 5000);
+            }
         };
 
         const UI = {
@@ -213,23 +216,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // --- NEW: Improved typing animation function ---
+        // --- MODIFICATION: Removed typing animation ---
         const typeResponse = (messageContainer, messageBubble, text) => {
-            let i = 0;
-            messageBubble.innerHTML = ""; // Clear the "Thinking..." placeholder
-            const typingInterval = setInterval(() => {
-                if (i <= text.length) {
-                    let currentText = text.substring(0, i);
-                    messageBubble.innerHTML = markdownToHtml(currentText);
-                    i++;
-                    DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-                } else {
-                    clearInterval(typingInterval);
-                    // Final processing after animation is complete
-                    addMessageActions(messageContainer, text);
-                    highlightCodeBlocks(); // Ensure code is highlighted if markdown creates it
-                }
-            }, 15); // Adjusted speed
+            messageBubble.innerHTML = markdownToHtml(text);
+            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
+            addMessageActions(messageContainer, text);
+            highlightCodeBlocks();
         };
 
         const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
@@ -254,13 +246,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
                         
-                        if (data.response.includes('```')) {
-                            messageBubble.innerHTML = markdownToHtml(data.response);
-                            highlightCodeBlocks();
-                            addMessageActions(messageContainer, data.response);
-                        } else {
-                            typeResponse(messageContainer, messageBubble, data.response);
-                        }
+                        // Use the updated typeResponse function
+                        typeResponse(messageContainer, messageBubble, data.response);
 
                         showProcessing(false);
                         
@@ -282,7 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                     showProcessing(false);
                 }
-            }, 3000);
+            // MODIFICATION: Reduced polling interval
+            }, 1000);
         };
         
         const handleGenerate = async () => {
@@ -379,13 +367,42 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
         
+        // --- NEW: Spinner functions ---
+        const showUploadSpinner = () => {
+            const dropZone = DOMElements.dropZone;
+            if (dropZone) {
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner';
+                spinner.style.position = 'absolute';
+                spinner.style.top = '50%';
+                spinner.style.left = '50%';
+                spinner.style.transform = 'translate(-50%, -50%)';
+                dropZone.appendChild(spinner);
+                DOMElements.promptInput.disabled = true;
+            }
+        };
+
+        const hideUploadSpinner = () => {
+            const dropZone = DOMElements.dropZone;
+            if (dropZone) {
+                const spinner = dropZone.querySelector('.spinner');
+                if (spinner) {
+                    dropZone.removeChild(spinner);
+                }
+                DOMElements.promptInput.disabled = false;
+            }
+        };
+
+        // MODIFICATION: Integrated spinner into file handling
         const handleFiles = async (files) => {
+            showUploadSpinner();
             const fileList = Array.from(files);
             let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
             for (const file of fileList) {
                 totalSize += file.size;
                 if (totalSize > MAX_TOTAL_SIZE) {
                     showAlert(`Total file size cannot exceed 10MB.`, 'danger');
+                    hideUploadSpinner();
                     return;
                 }
             }
@@ -428,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             renderAttachedFiles();
+            hideUploadSpinner();
         };
 
         const addMessageActions = (messageContainer, messageText) => {
@@ -547,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     showAlert('All conversations have been cleared.', 'success');
                     fetchConversations(); 
-                    startNewChat();     
+                    startNewChat();      
                 } catch (error) {
                     showAlert(error.message, 'danger');
                 }
@@ -742,7 +760,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 15;
         const MIN_WORDS = 275;
         const MAX_WORDS = 1925;
-        const POLLING_RATE = 3000;
+        // MODIFICATION: Reduced polling rate
+        const POLLING_RATE = 1000;
         const ALERT_DURATION = 5000;
 
         const DOMElements = {
@@ -984,10 +1003,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             UI.showAlert('Task complete!', 'success');
                         }
+                    // MODIFICATION: Handle failed humanization
                     } else if (data.status === 'humanization_failed') {
                         Actions.stopPolling();
+                        UI.showAlert(data.message || 'An unexpected error occurred. Please try again.', 'danger');
                         UI.resetSelections();
-                        UI.showAlert(data.message || 'Processing failed. A full refund has been issued.', 'danger');
                     }
                 } catch (error) {
                     Actions.stopPolling();
