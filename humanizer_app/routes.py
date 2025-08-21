@@ -211,21 +211,21 @@ def playground_chat():
     input_parts = data.get('input', [])
     model_key = data.get('model')
     conversation_id = data.get('conversation_id')
-    internet_search_enabled = data.get('internet_search_enabled', False)
 
     if not isinstance(input_parts, list) or not input_parts:
         return jsonify({"error": "No input provided."}), 400
 
-    if internet_search_enabled:
-        user_prompt_text = ""
-        text_part_index = -1
-        for i, part in enumerate(input_parts):
-            if part.get("type") == "input_text":
-                user_prompt_text = part.get("text", "").strip()
-                text_part_index = i
-                break
-        
-        search_query = user_prompt_text
+    # --- REVERTED AND IMPROVED INTERNET SEARCH LOGIC ---
+    user_prompt_text = ""
+    text_part_index = -1
+    for i, part in enumerate(input_parts):
+        if part.get("type") == "input_text":
+            user_prompt_text = part.get("text", "").strip()
+            text_part_index = i
+            break
+
+    if user_prompt_text.lower().startswith('/search '):
+        search_query = user_prompt_text[8:]
         try:
             search_results = list(google_search(search_query, num_results=3, sleep_interval=2))
             
@@ -246,17 +246,15 @@ def playground_chat():
                 except requests.RequestException as e:
                     logger.error(f"Failed to fetch URL {top_url}: {e}")
                     verbatim_snippet = "Could not retrieve content from the source."
-                except Exception as e:
-                    logger.error(f"Error parsing content from {top_url}: {e}")
-                    verbatim_snippet = "Could not parse content from the source."
 
                 if text_part_index != -1:
                     original_prompt = input_parts[text_part_index]['text']
+                    
+                    # Create the final prompt with clear instructions to include the source link
                     final_prompt = (
-                        f"Please answer the user's query based on the provided search result.\n"
-                        f"Your response should be structured in two parts:\n"
-                        f"1.  **Assessment:** Your own summary and analysis of the information.\n"
-                        f"2.  **Verbatim Text:** The exact, unmodified text snippet from the source.\n\n"
+                        f"Please answer the user's query based on the provided search result. "
+                        f"First, provide your own assessment, and then include the verbatim text snippet from the source. "
+                        f"**Crucially, you must include the source URL in your assessment.**\n\n"
                         f"--- Source URL ---\n{top_url}\n\n"
                         f"--- Verbatim Snippet from Source ---\n\"{verbatim_snippet}\"\n\n"
                         f"--- User's Original Prompt ---\n{original_prompt}"
@@ -266,6 +264,7 @@ def playground_chat():
         except Exception as e:
             logger.error(f"Internet search failed for query '{search_query}': {e}", exc_info=True)
             pass
+    # --- END OF REVERTED LOGIC ---
 
     try:
         if conversation_id:
