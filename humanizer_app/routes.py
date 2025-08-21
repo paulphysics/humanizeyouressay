@@ -164,9 +164,9 @@ def transaction_history():
 
     for t in transactions:
         if hasattr(t, 'created_at') and t.created_at:
-                 t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
+                  t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
         else:
-                 t.created_at_local_str = 'N/A'
+                  t.created_at_local_str = 'N/A'
 
         t.task = None
         t.display_title = t.description or 'N/A'
@@ -202,7 +202,6 @@ def transaction_history():
                            wallet_balance=user.wallet.balance,
                            is_admin=user.is_admin)
 
-# --- UPDATED playground_chat FUNCTION ---
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
 def playground_chat():
@@ -215,7 +214,6 @@ def playground_chat():
     if not isinstance(input_parts, list) or not input_parts:
         return jsonify({"error": "No input provided."}), 400
 
-    # --- REVERTED AND IMPROVED INTERNET SEARCH LOGIC ---
     user_prompt_text = ""
     text_part_index = -1
     for i, part in enumerate(input_parts):
@@ -250,7 +248,6 @@ def playground_chat():
                 if text_part_index != -1:
                     original_prompt = input_parts[text_part_index]['text']
                     
-                    # Create the final prompt with clear instructions to include the source link
                     final_prompt = (
                         f"Please answer the user's query based on the provided search result. "
                         f"First, provide your own assessment, and then include the verbatim text snippet from the source. "
@@ -264,7 +261,6 @@ def playground_chat():
         except Exception as e:
             logger.error(f"Internet search failed for query '{search_query}': {e}", exc_info=True)
             pass
-    # --- END OF REVERTED LOGIC ---
 
     try:
         if conversation_id:
@@ -426,7 +422,7 @@ def _handle_logged_in_humanization():
         input_text = data.get("input_text", "").strip()
         word_count = count_words(input_text)
         humanizer_mode = data.get("humanizer_mode", "standard")
-
+        
         if not input_text:
             return jsonify({"status": "error", "message": "Text input is required."}), 400
 
@@ -441,16 +437,36 @@ def _handle_logged_in_humanization():
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
-                                     transaction_type='humanize_fee', description=transaction_ref))
+                                   transaction_type='humanize_fee', description=transaction_ref))
 
-        new_task = Task(external_reference=transaction_ref, input_text=input_text, phone_number="N/A",
-                        amount_charged=amount_to_charge, status='queued', user_id=user.id,
-                        diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]})
+        # --- MODIFICATION START: Explicitly pass all arguments to the task ---
+        output_format = data.get("output_format", "plain_text")
+        bibtex_input = data.get("bibtex_input", "")
+        english_dialect = data.get("english_dialect", "american")
+
+        new_task = Task(
+            external_reference=transaction_ref,
+            input_text=input_text,
+            phone_number="N/A",
+            amount_charged=amount_to_charge,
+            status='queued',
+            user_id=user.id,
+            diff_data={key: data.get(key, "") for key in ["output_format", "bibtex_input", "english_dialect", "humanizer_mode"]}
+        )
         db.session.add(new_task)
         db.session.commit()
 
-        process_humanization_task.delay(new_task.id)
-
+        process_humanization_task.delay(
+            task_id=new_task.id,
+            user_id=user.id,
+            input_text=input_text,
+            humanizer_mode=humanizer_mode,
+            output_format=output_format,
+            english_dialect=english_dialect,
+            bibtex_input=bibtex_input
+        )
+        # --- MODIFICATION END ---
+        
         return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
 
     except AllModelsFailedError as e:
@@ -510,7 +526,7 @@ def payhero_callback():
                 user = task.user
                 user.wallet.balance += amount
                 db.session.add(Transaction(wallet_id=user.wallet.id, amount=amount,
-                                            transaction_type='top-up', description=f"M-Pesa top-up from {task.phone_number}"))
+                                           transaction_type='top-up', description=f"M-Pesa top-up from {task.phone_number}"))
                 task.status = 'topup_complete'
             else:
                 task.status = 'topup_failed'
@@ -534,7 +550,6 @@ def payhero_callback():
                 logger.info(f"Anonymous task {task.id} payment failed.")
     return jsonify({'status': 'success'}), 200
 
-# --- MODIFIED get_humanization_status function ---
 @main_bp.route("/get_humanization_status/<transaction_id>", methods=["GET"])
 def get_humanization_status(transaction_id):
     task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
@@ -553,7 +568,6 @@ def get_humanization_status(transaction_id):
                 "download_url": url_for('main.download_formatted_doc', transaction_id=task.external_reference)
             })
         else:
-            # Generate the highlighted HTML for the main page view
             word_diff = diff_data.get('word_diff')
             html_output = ""
             if isinstance(word_diff, list):
@@ -580,7 +594,7 @@ def get_humanization_status(transaction_id):
 
             response_data.update({
                 "status": "complete", 
-                "humanized_output": html_output, # Send the rich HTML
+                "humanized_output": html_output,
                 "output_word_count": task.output_word_count, 
                 "diff_data": diff_data
             })
@@ -798,13 +812,11 @@ def extract_text_from_file():
         if filename.lower().endswith('.zip'):
             combined_text = f"--- Contents of {filename} ---\n\n"
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-                # Scan for blocked files inside the ZIP first
                 for file_info in z.infolist():
                     if '.' in file_info.filename and file_info.filename.rsplit('.', 1)[1].lower() in BLOCKED_EXTENSIONS:
                         ext = file_info.filename.rsplit('.', 1)[1].lower()
                         return jsonify({"error": f"Upload failed. Executable file type (.{ext}) found inside ZIP."}), 400
 
-                # If scan passes, proceed with extraction
                 for file_info in z.infolist():
                     if file_info.is_dir():
                         continue
@@ -826,7 +838,7 @@ def extract_text_from_file():
                             else:
                                 doc_text += "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
 
-                        else: # For all other non-blocked files, including code, treat them as plain text
+                        else: 
                             doc_text += file_content_bytes.decode('utf-8', errors='ignore')
 
                         combined_text += doc_text
@@ -862,20 +874,14 @@ def extract_text_from_file():
 @main_bp.route('/conversations/clear_all', methods=['POST'])
 @auth_required
 def clear_all_conversations():
-    """
-    Deletes all conversation history for the currently logged-in user.
-    """
     try:
         user = User.query.get_or_404(session['user']['uid'])
         
-        # Get all conversation IDs for the current user
         conversation_ids = [conv.id for conv in Conversation.query.filter_by(user_id=user.id).all()]
 
         if conversation_ids:
-            # Step 1: Delete all chat messages associated with those conversations
             ChatMessage.query.filter(ChatMessage.conversation_id.in_(conversation_ids)).delete(synchronize_session=False)
             
-            # Step 2: Now, delete the conversations themselves
             Conversation.query.filter_by(user_id=user.id).delete(synchronize_session=False)
         
         db.session.commit()
