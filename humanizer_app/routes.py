@@ -139,7 +139,7 @@ def transaction_history():
     user = User.query.get_or_404(session['user']['uid'])
     if not user.wallet:
         flash("No wallet found for this user.", "error")
-        return redirect(url_for('main.home'))
+        return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     per_page = 20
@@ -432,14 +432,13 @@ def _handle_logged_in_humanization():
         price = ESSAY_PRICE_PER_UNIT if humanizer_mode == 'essay' else PRICE_PER_UNIT
         amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
         if user.wallet.balance < amount_to_charge:
-            return jsonify({"status": "error", "message": "Insufficient Funds! Please top up your wallet."}), 402
+            flash("Your wallet balance is insufficient. Please top up your account to ensure that your tasks are processed.", "danger")
 
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
                                    transaction_type='humanize_fee', description=transaction_ref))
 
-        # --- MODIFICATION START: Explicitly pass all arguments to the task ---
         output_format = data.get("output_format", "plain_text")
         bibtex_input = data.get("bibtex_input", "")
         english_dialect = data.get("english_dialect", "american")
@@ -457,27 +456,21 @@ def _handle_logged_in_humanization():
         db.session.commit()
 
         process_humanization_task.delay(
-            task_id=new_task.id,
-            user_id=user.id,
-            input_text=input_text,
-            humanizer_mode=humanizer_mode,
-            output_format=output_format,
-            english_dialect=english_dialect,
-            bibtex_input=bibtex_input
+            task_id=new_task.id
         )
-        # --- MODIFICATION END ---
         
         return jsonify({"status": "processing_started", "transaction_id": new_task.external_reference})
 
     except AllModelsFailedError as e:
         db.session.rollback()
         flash(e.message, "danger")
-        return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
+        return jsonify({"status": "error", "redirect": url_for('main.index')}), 500
     except Exception as e:
         db.session.rollback()
         logger.error(f"An unexpected error occurred during humanization for user {user.id}: {e}", exc_info=True)
         flash("An unexpected error occurred. Please try again.", "danger")
-        return jsonify({"status": "error", "redirect": url_for('main.home')}), 500
+        # --- MODIFICATION: Changed 'main.home' to 'main.index' ---
+        return jsonify({"status": "error", "redirect": url_for('main.index')}), 500
 
 def _handle_anonymous_humanization():
     data = request.form
@@ -608,7 +601,7 @@ def download_formatted_doc(transaction_id):
         abort(403)
     if task.status != 'humanization_complete':
         flash("Document is not yet ready for download.", "danger")
-        return redirect(url_for('main.home'))
+        return redirect(url_for('main.index'))
 
     output_dir = "/tmp" if os.environ.get("FLASK_ENV") == "production" else "output_docs"
     os.makedirs(output_dir, exist_ok=True)
@@ -625,7 +618,7 @@ def download_formatted_doc(transaction_id):
         return send_file(filepath, as_attachment=True)
 
     flash("Failed to generate the document.", "danger")
-    return redirect(url_for('main.home'))
+    return redirect(url_for('main.index'))
 
 @main_bp.route("/task/details/<transaction_id>")
 @auth_required
