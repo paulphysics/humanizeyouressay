@@ -462,7 +462,6 @@ document.addEventListener('DOMContentLoaded', () => {
             humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
             humanizeBtn.onclick = () => {
                 localStorage.setItem('textToHumanize', messageText);
-                // --- THIS IS THE MODIFIED LINE ---
                 window.open('/humanizer', '_blank');
             };
             actionsContainer.append(copyBtn, humanizeBtn);
@@ -1046,6 +1045,9 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         if (DOMElements.humanizeForm) {
+            // --- THIS IS THE MODIFIED LINE ---
+            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = true;
+
             DOMElements.inputText.oninput = UI.updateWordCountAndCost;
             if (DOMElements.copyBtn) DOMElements.copyBtn.onclick = () => copyToClipboard('humanized_output_display');
             if (DOMElements.resetBtn) DOMElements.resetBtn.onclick = UI.resetSelections;
