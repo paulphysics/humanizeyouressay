@@ -39,7 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
                 DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
             }
-            // MODIFICATION: Only set a timeout for non-info alerts
             if (type !== 'info') {
                 alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), 5000);
             }
@@ -216,7 +215,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // --- MODIFICATION: Removed typing animation ---
         const typeResponse = (messageContainer, messageBubble, text) => {
             messageBubble.innerHTML = markdownToHtml(text);
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
@@ -246,7 +244,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
                         
-                        // Use the updated typeResponse function
                         typeResponse(messageContainer, messageBubble, data.response);
 
                         showProcessing(false);
@@ -269,7 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
                     showProcessing(false);
                 }
-            // MODIFICATION: Reduced polling interval
             }, 1000);
         };
         
@@ -367,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
         
-        // --- NEW: Spinner functions ---
         const showUploadSpinner = () => {
             const dropZone = DOMElements.dropZone;
             if (dropZone) {
@@ -393,7 +388,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // MODIFICATION: Integrated spinner into file handling
         const handleFiles = async (files) => {
             showUploadSpinner();
             const fileList = Array.from(files);
@@ -468,7 +462,8 @@ document.addEventListener('DOMContentLoaded', () => {
             humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
             humanizeBtn.onclick = () => {
                 localStorage.setItem('textToHumanize', messageText);
-                window.location.href = '/humanizer';
+                // --- THIS IS THE MODIFIED LINE ---
+                window.open('/humanizer', '_blank');
             };
             actionsContainer.append(copyBtn, humanizeBtn);
             messageContainer.appendChild(actionsContainer);
@@ -760,7 +755,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 15;
         const MIN_WORDS = 275;
         const MAX_WORDS = 1925;
-        // MODIFICATION: Reduced polling rate
         const POLLING_RATE = 1000;
         const ALERT_DURATION = 5000;
 
@@ -1003,7 +997,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             UI.showAlert('Task complete!', 'success');
                         }
-                    // MODIFICATION: Handle failed humanization
                     } else if (data.status === 'humanization_failed') {
                         Actions.stopPolling();
                         UI.showAlert(data.message || 'An unexpected error occurred. Please try again.', 'danger');
