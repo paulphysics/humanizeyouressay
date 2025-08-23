@@ -3,8 +3,8 @@ import logging
 import json
 from celery import shared_task
 from flask import current_app
-import google.generativeai as genai  # --- ADDED
-import os  # --- ADDED
+import google.generativeai as genai
+import os
 
 from .extensions import db
 from .models import Task, User, Transaction, Conversation, ChatMessage
@@ -18,13 +18,12 @@ from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT, ESSAY_PRICE_PER_UNI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- ADDED: Configure Google Generative AI ---
-if not genai.get_key():
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if google_api_key:
-        genai.configure(api_key=google_api_key)
-    else:
-        logger.warning("GOOGLE_API_KEY is not set. Gemini models will not be available.")
+# --- MODIFIED: Configure Google Generative AI ---
+google_api_key = os.getenv("GOOGLE_API_KEY")
+if google_api_key:
+    genai.configure(api_key=google_api_key)
+else:
+    logger.warning("GOOGLE_API_KEY is not set. Gemini models will not be available.")
 # -------------------------------------------
 
 
@@ -33,6 +32,7 @@ def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
+    # ... (The rest of this function remains unchanged)
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Task ID: {task_id}] Task not found in background job.")
@@ -108,6 +108,7 @@ def process_playground_chat_task(self, task_id: int):
     """
     Celery task to process a playground chat message in the background.
     """
+    # ... (The rest of this function is the same as the previous version)
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Playground Task ID: {task_id}] Task not found.")
@@ -168,9 +169,9 @@ def process_playground_chat_task(self, task_id: int):
         final_messages = [system_prompt] + message_history
 
         output_text = ""
-        # --- START: Logic to switch between OpenAI and Gemini ---
+        # --- Logic to switch between OpenAI and Gemini ---
         if "gemini" in model_key:
-            if not genai.get_key():
+            if not os.getenv("GOOGLE_API_KEY"):
                 raise Exception("Google API key is not configured.")
             
             gemini_model = genai.GenerativeModel(model_info['api_id'])
@@ -179,7 +180,7 @@ def process_playground_chat_task(self, task_id: int):
             gemini_messages = []
             for message in final_messages:
                 if message["role"] == "user":
-                    gemini_messages.append({'role': 'user', 'parts': [part["text"] for part in message["content"]]})
+                    gemini_messages.append({'role': 'user', 'parts': [part["text"] for part in message["content"] if "text" in part]}) # Ensure only text parts are sent
                 elif message["role"] == "assistant":
                     gemini_messages.append({'role': 'model', 'parts': [message["content"]]})
 
@@ -194,7 +195,7 @@ def process_playground_chat_task(self, task_id: int):
             output_text = response.choices[0].message.content or ""
         else:
             raise Exception(f"Model key '{model_key}' does not specify a known provider (gpt or gemini).")
-        # --- END: Logic to switch between OpenAI and Gemini ---
+        # --- END ---
 
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
