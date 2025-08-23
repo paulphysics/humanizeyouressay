@@ -1,80 +1,113 @@
 # FILE: humanizer_app/humanizer_service/passes.py
 import logging
-from .api_clients import call_api_with_fallback
-from .parsers import count_words
+from collections import defaultdict
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-def generate_title_openai(text_content: str) -> str:
+def convert_dialect_spellings_only(text: str, dialect: str = "us") -> str:
     """
-    Uses an AI model to generate a concise, academic title for a given text.
+    Uses an AI model to correct spellings to a specific English dialect
+    without changing wording, sentence structure, or punctuation.
     """
-    prompt = (
-        "You are an academic editor. Your task is to create a concise, formal, and descriptive title for the following essay. "
-        "The title should accurately reflect the main argument or topic of the text. Do not use quotation marks in the output. "
-        "Return only the title and nothing else."
-    )
-    try:
-        new_title = call_api_with_fallback(
-            model_list=["gpt-4o"],
-            system_message=prompt,
-            user_prompt=text_content,
-            temperature=0.3
-            # FIX: Removed invalid 'max_tokens=20' argument
-        )
-        return new_title.strip().strip('"')
-    except Exception as e:
-        logger.error(f"Could not generate title due to an API error: {e}")
-        return "Formatted Document" # Fallback title
-
-def format_references_with_openai(bibtex_str: str, style: str) -> list:
-    """
-    Uses an AI model to format a BibTeX string into a specified citation style.
-    """
-    style_guide = {"apa_7": "APA 7th Edition", "mla_9": "MLA 9th Edition", "harvard": "Harvard"}
-    prompt = (
-        "You are a citation formatting expert. Convert the following BibTeX entries into a properly formatted reference list according to the "
-        f"{style_guide.get(style, 'APA 7th Edition')} style. Each reference should be on a new line. Do not include a title like 'References'. "
-        "Return only the formatted reference list."
-    )
-    try:
-        formatted_text = call_api_with_fallback(
-            model_list=["gpt-4o"],
-            system_message=prompt,
-            user_prompt=bibtex_str,
-            temperature=0.0
-            # FIX: Removed invalid 'max_tokens=2048' argument
-        )
-        return [ref.strip() for ref in formatted_text.split('\n') if ref.strip()]
-    except Exception as e:
-        logger.error(f"Could not format references due to an API error: {e}")
-        return []
-
-def convert_dialect_spellings_only(text: str, target_dialect: str) -> str:
-    """
-    Uses an AI model to convert the spelling of a text between US and UK English.
-    """
-    if target_dialect not in ["us", "uk"]:
-        return text
+    from .api_clients import call_api_with_fallback
+    dialect_map = {
+        "us": "United States", "uk": "United Kingdom",
+        "ca": "Canadian", "au": "Australian"
+    }
+    dialect_full_name = dialect_map.get(dialect.lower(), "United States")
     
     prompt = (
-        f"You are a language expert specializing in English dialects. Your task is to correct the spelling in the provided text to conform strictly to {target_dialect.upper()} English. "
-        "Follow these rules precisely:\n"
-        "1. Only change spellings (e.g., 'colour' to 'color' or vice-versa).\n"
-        "2. Do not change any vocabulary, grammar, punctuation, or sentence structure.\n"
-        "3. Preserve all original formatting, including markdown and line breaks.\n"
-        "4. If the text is already in the correct dialect, return it unchanged.\n"
-        "5. Return only the corrected text and nothing else."
+        f"You are a proofreading assistant. Your only task is to correct the spelling in the following text to conform to {dialect_full_name} English standards. "
+        "DO NOT change any wording, sentence structure, or punctuation. Only correct spelling errors. "
+        "If there are no spelling errors, return the original text."
     )
+    
     try:
-        converted_text = call_api_with_fallback(
+        corrected_text = call_api_with_fallback(
             model_list=["gpt-4o"],
             system_message=prompt,
             user_prompt=text,
-            temperature=0.0
-            # FIX: Removed invalid 'max_tokens=2048' argument
+            temperature=0.0,
+            top_p=1.0,
+            presence_penalty=0.0,
+            frequency_penalty=0.0
+            # FIX: Removed invalid 'max_tokens' argument
         )
-        return converted_text
+        return corrected_text
     except Exception as e:
         logger.error(f"Could not convert dialect due to an API error: {e}")
-        return text # Return original text on failure
+        return text
+
+def generate_title_openai(text: str) -> str:
+    """
+    Generates a suitable academic title for a given text using an AI model.
+    """
+    from .api_clients import call_api_with_fallback
+    prompt = "Generate a suitable academic title for the following paper. The title should be concise and relevant."
+    try:
+        title = call_api_with_fallback(
+            model_list=["gpt-4o"],
+            system_message=prompt,
+            user_prompt=text,
+            temperature=0.7,
+            top_p=1.0,
+            presence_penalty=0.0,
+            frequency_penalty=0.0
+            # FIX: Removed invalid 'max_tokens' argument
+        )
+        return title.strip().strip('"')
+    except Exception as e:
+        logger.error(f"Could not generate title due to an API error: {e}")
+        return "Formatted Document"
+
+def format_references_with_openai(references_text: str, style: str) -> list:
+    """
+    Uses OpenAI to parse a string of references (any format) and format them
+    into the specified academic style.
+    """
+    from .api_clients import call_api_with_fallback
+    style_guide = {
+        "apa_7": "APA 7th Edition",
+        "mla_9": "MLA 9th Edition",
+        "harvard": "Harvard"
+    }
+    full_style_name = style_guide.get(style, "APA 7th Edition")
+
+    prompt = (
+        f"You are an expert academic librarian. Your task is to parse the following text, which contains one or more references, and format each one according to the {full_style_name} citation style. "
+        "Follow these rules:\n"
+        "1. Identify each individual reference in the provided text.\n"
+        "2. Format each reference exactly according to the official guidelines for its type (e.g., book, journal article, website).\n"
+        "3. Return the formatted references as a Python list of strings, where each string is a single, complete reference.\n"
+        "4. Ensure the output is ONLY a valid Python list. Do not include any introductory text, explanation, or code block formatting."
+        "For example: ['Reference 1...', 'Reference 2...']"
+    )
+
+    try:
+        response_str = call_api_with_fallback(
+            model_list=["gpt-4o"],
+            system_message=prompt,
+            user_prompt=references_text,
+            temperature=0.0,
+            top_p=1.0,
+            presence_penalty=0.0,
+            frequency_penalty=0.0
+            # FIX: Removed invalid 'max_tokens' argument
+        )
+        
+        import ast
+        formatted_list = ast.literal_eval(response_str)
+        
+        if isinstance(formatted_list, list):
+            return formatted_list
+        else:
+            logger.error(f"OpenAI did not return a valid list for references. Fallback.")
+            return [references_text]
+
+    except (ValueError, SyntaxError) as e:
+        logger.error(f"Could not parse OpenAI response for references: {e}. Fallback.")
+        return [references_text]
+    except Exception as e:
+        logger.error(f"Could not format references due to an API error: {e}")
+        return [references_text]
