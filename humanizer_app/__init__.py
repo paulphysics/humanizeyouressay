@@ -41,7 +41,9 @@ def create_app():
     # --- Model configuration ---
     MODELS = {
         "gemini-2.5-pro": {
-            "api_id": "gemini-2.5-pro-2025-08-08",
+            # --- FINAL CORRECTED API ID ---
+            "api_id": "gemini-2.5-pro",
+            # ------------------------------
             "price_per_word": 0.015,
             "label": "Gemini 2.5 Pro"
         },
@@ -56,7 +58,7 @@ def create_app():
             "label": "ChatGPT 4o"
         }
     }
-    DEFAULT_MODEL_KEY = "gpt-5"  # Changed back to gpt-5
+    DEFAULT_MODEL_KEY = "gpt-5"
     app.config["MODELS"] = MODELS
     app.config["DEFAULT_MODEL_KEY"] = DEFAULT_MODEL_KEY
     app.config['DEFAULT_MODEL'] = os.environ.get('DEFAULT_MODEL', DEFAULT_MODEL_KEY)
@@ -82,7 +84,6 @@ def create_app():
     # --- Celery Configuration (with SSL fix) ---
     redis_url = os.getenv("REDIS_URL")
     if redis_url and redis_url.startswith("rediss://"):
-        # This is the key change: append the SSL setting directly to the URL
         redis_url += "?ssl_cert_reqs=CERT_NONE"
     
     app.config.from_mapping(
