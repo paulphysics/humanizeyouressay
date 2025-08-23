@@ -1,10 +1,10 @@
-# humanizer_app/tasks.py
+# FILE: humanizer_app/tasks.py
 import logging
 import json
 from celery import shared_task
 from flask import current_app
-
-# DO NOT import create_app here to avoid circular imports
+import google.generativeai as genai  # --- ADDED
+import os  # --- ADDED
 
 from .extensions import db
 from .models import Task, User, Transaction, Conversation, ChatMessage
@@ -18,7 +18,14 @@ from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT, ESSAY_PRICE_PER_UNI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DO NOT create the app instance here. The worker handles the context.
+# --- ADDED: Configure Google Generative AI ---
+if not genai.get_key():
+    google_api_key = os.getenv("GOOGLE_API_KEY")
+    if google_api_key:
+        genai.configure(api_key=google_api_key)
+    else:
+        logger.warning("GOOGLE_API_KEY is not set. Gemini models will not be available.")
+# -------------------------------------------
 
 
 @shared_task(ignore_result=True)
@@ -70,18 +77,18 @@ def process_humanization_task(task_id: int):
     except Exception as e:
         logger.error(f"Humanization task {task_id} failed: {e}", exc_info=True)
         db.session.rollback()
-        
+
         task = Task.query.get(task_id)
         if task:
             task.status = 'humanization_failed'
             task.error_message = "An unexpected error occurred. A full refund has been issued."
-            
+
             user = task.user
             original_charge = task.amount_charged
-            
+
             if user and user.wallet and original_charge > 0:
                 user.wallet.balance += original_charge
-                
+
                 db.session.add(Transaction(
                     wallet_id=user.wallet.id,
                     amount=original_charge,
@@ -91,7 +98,7 @@ def process_humanization_task(task_id: int):
                 logger.info(f"Full refund of KSh {original_charge:.2f} processed for user {user.id} for failed task {task.id}.")
 
             db.session.commit()
-            
+
     finally:
         db.session.remove()
 
@@ -112,7 +119,7 @@ def process_playground_chat_task(self, task_id: int):
 
         task_data = task.diff_data or {}
         conversation_id = task_data.get('conversation_id')
-        
+
         if not conversation_id:
             raise ValueError("conversation_id is missing from the task data.")
 
@@ -122,13 +129,11 @@ def process_playground_chat_task(self, task_id: int):
 
         message_history = []
         past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
-        
+
         for msg in past_messages:
             if msg.role == 'user':
                 try:
-                    # --- START MODIFICATION for Image Explanation ---
                     content_parts = json.loads(msg.content)
-                    # This will now create a list of text and image parts for the AI
                     vision_message_content = []
                     for part in content_parts:
                         if part.get("type") == "input_text" and part.get("text"):
@@ -141,13 +146,11 @@ def process_playground_chat_task(self, task_id: int):
                                 "type": "image_url",
                                 "image_url": part["image_url"]
                             })
-                    
+
                     if vision_message_content:
                         message_history.append({"role": "user", "content": vision_message_content})
-                    # --- END MODIFICATION ---
 
                 except (json.JSONDecodeError, TypeError):
-                    # Fallback for older, plain text messages if any exist
                     message_history.append({"role": "user", "content": msg.content})
             elif msg.role == 'assistant':
                 message_history.append({"role": "assistant", "content": msg.content})
@@ -158,19 +161,40 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
-        # --- UPDATED: System prompt to enforce Markdown formatting ---
         system_prompt = {
             "role": "system",
             "content": "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```)."
         }
         final_messages = [system_prompt] + message_history
-        # --- END OF UPDATED LOGIC ---
 
-        response = openai_client.chat.completions.create(
-            model=model_info['api_id'],
-            messages=final_messages, # Use the new message list with the system prompt
-        )
-        output_text = response.choices[0].message.content or ""
+        output_text = ""
+        # --- START: Logic to switch between OpenAI and Gemini ---
+        if "gemini" in model_key:
+            if not genai.get_key():
+                raise Exception("Google API key is not configured.")
+            
+            gemini_model = genai.GenerativeModel(model_info['api_id'])
+            
+            # Gemini has a different message format
+            gemini_messages = []
+            for message in final_messages:
+                if message["role"] == "user":
+                    gemini_messages.append({'role': 'user', 'parts': [part["text"] for part in message["content"]]})
+                elif message["role"] == "assistant":
+                    gemini_messages.append({'role': 'model', 'parts': [message["content"]]})
+
+            response = gemini_model.generate_content(gemini_messages)
+            output_text = response.text
+
+        elif "gpt" in model_key:
+            response = openai_client.chat.completions.create(
+                model=model_info['api_id'],
+                messages=final_messages,
+            )
+            output_text = response.choices[0].message.content or ""
+        else:
+            raise Exception(f"Model key '{model_key}' does not specify a known provider (gpt or gemini).")
+        # --- END: Logic to switch between OpenAI and Gemini ---
 
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
@@ -181,9 +205,9 @@ def process_playground_chat_task(self, task_id: int):
                     user_prompt_for_title = past_messages[0].content
 
                 title_prompt = f"Create a short title (4-5 words max) for this chat:\n\nUser: {user_prompt_for_title}\nAssistant: {output_text}"
-                
+
                 title_model = models_config.get('gpt-4o') or model_info
-                
+
                 title_resp = openai_client.chat.completions.create(
                     model=title_model['api_id'],
                     messages=[
@@ -193,7 +217,7 @@ def process_playground_chat_task(self, task_id: int):
                     temperature=0.2,
                     max_tokens=20
                 )
-                
+
                 title_text = (title_resp.choices[0].message.content or "").strip()
 
                 if title_text and conversation:
