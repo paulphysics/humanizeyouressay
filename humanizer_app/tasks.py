@@ -18,13 +18,12 @@ from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT, ESSAY_PRICE_PER_UNI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- MODIFIED: Configure Google Generative AI ---
+# Configure Google Generative AI
 google_api_key = os.getenv("GOOGLE_API_KEY")
 if google_api_key:
     genai.configure(api_key=google_api_key)
 else:
     logger.warning("GOOGLE_API_KEY is not set. Gemini models will not be available.")
-# -------------------------------------------
 
 
 @shared_task(ignore_result=True)
@@ -32,7 +31,7 @@ def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
-    # ... (The rest of this function remains unchanged)
+    # ... (This function remains unchanged)
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Task ID: {task_id}] Task not found in background job.")
@@ -108,7 +107,6 @@ def process_playground_chat_task(self, task_id: int):
     """
     Celery task to process a playground chat message in the background.
     """
-    # ... (The rest of this function is the same as the previous version)
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Playground Task ID: {task_id}] Task not found.")
@@ -176,13 +174,27 @@ def process_playground_chat_task(self, task_id: int):
             
             gemini_model = genai.GenerativeModel(model_info['api_id'])
             
-            # Gemini has a different message format
+            # --- START: CORRECTED Gemini Message Formatting ---
             gemini_messages = []
             for message in final_messages:
-                if message["role"] == "user":
-                    gemini_messages.append({'role': 'user', 'parts': [part["text"] for part in message["content"] if "text" in part]}) # Ensure only text parts are sent
-                elif message["role"] == "assistant":
-                    gemini_messages.append({'role': 'model', 'parts': [message["content"]]})
+                # Gemini uses 'user' and 'model' roles, and doesn't have a 'system' role.
+                role = "user" if message["role"] in ["user", "system"] else "model"
+                
+                content = message["content"]
+                parts = []
+
+                if isinstance(content, list):
+                    # Handle complex content (e.g., with images)
+                    for part in content:
+                        if part.get("type") == "text":
+                            parts.append(part["text"])
+                elif isinstance(content, str):
+                    # Handle simple string content
+                    parts.append(content)
+                
+                if parts:
+                     gemini_messages.append({'role': role, 'parts': parts})
+            # --- END: CORRECTED Gemini Message Formatting ---
 
             response = gemini_model.generate_content(gemini_messages)
             output_text = response.text
