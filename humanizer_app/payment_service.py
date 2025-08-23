@@ -1,6 +1,6 @@
-# humanizer_app/payment_service.py
+# FILE: humanizer_app/payment_service.py
 """
-This module handles interactions with the Pay Hero payment gateway.
+This module handles interactions with the Pay Hero payment gateway and defines the application's pricing structure.
 """
 
 import os
@@ -18,12 +18,12 @@ PAY_HERO_BASIC_AUTH_TOKEN = os.getenv("PAY_HERO_BASIC_AUTH_TOKEN")
 PAY_HERO_CHANNEL_ID = os.getenv("PAY_HERO_CHANNEL_ID")
 PAY_HERO_CALLBACK_URL = os.getenv("PAY_HERO_CALLBACK_URL")
 
-# --- THIS IS THE FIX ---
-# Pricing Constants (Updated for Live)
+# --- CORRECTED PRICING CONSTANTS ---
 WORDS_PER_UNIT = 275
-PRICE_PER_UNIT = 39         # KSh for Standard (logged in)
-ESSAY_PRICE_PER_UNIT = 69   # KSh for Essay (logged in)
-# --- END OF FIX ---
+PRICE_PER_UNIT = 49.0                # KSh for Standard Humanization
+ESSAY_PRICE_PER_UNIT = 49.0          # KSh for Essay Humanization (now same as standard)
+FORMAT_ONLY_PRICE_PER_UNIT = 19.0    # KSh for Formatting Only
+# ------------------------------------
 
 # --- Environment Variable Validation ---
 def validate_env_vars():
@@ -40,6 +40,21 @@ def validate_env_vars():
         raise ValueError(error_msg)
 
 validate_env_vars()
+
+def get_humanization_cost(word_count: int, mode: str = 'standard') -> float:
+    """
+    Calculates the cost of a humanization task based on word count and mode.
+    """
+    if mode == 'essay':
+        price = ESSAY_PRICE_PER_UNIT
+    elif mode == 'document_formatter':
+        price = FORMAT_ONLY_PRICE_PER_UNIT
+    else: # 'standard'
+        price = PRICE_PER_UNIT
+    
+    # Calculate cost based on word count blocks
+    cost = (word_count / WORDS_PER_UNIT) * price
+    return cost
 
 def initiate_payhero_payment(amount: float, phone_number: str, external_reference: str, customer_name: str = "Customer") -> dict:
     """
