@@ -795,8 +795,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const typeAnimation = {
             element: DOMElements.typingText,
-           // text: "Humanized content will appear here!",
-            text: "Humanizer still in development and will be made available as soon as possible! Feel free to interact with the models (ChatGPT 5 and ChatGPT 4o) available in the playground.",
+            // --- THIS IS THE MODIFIED LINE ---
+            text: "Humanized content will appear here!",
             speed: 75,
             currentIndex: 0,
             intervalId: null,
@@ -1047,7 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (DOMElements.humanizeForm) {
             // --- THIS IS THE MODIFIED LINE ---
-            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = true;
+            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false;
 
             DOMElements.inputText.oninput = UI.updateWordCountAndCost;
             if (DOMElements.copyBtn) DOMElements.copyBtn.onclick = () => copyToClipboard('humanized_output_display');
