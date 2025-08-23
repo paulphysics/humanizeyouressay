@@ -749,9 +749,12 @@ document.addEventListener('DOMContentLoaded', () => {
             transactionId: null,
             pollingRetries: 0
         };
-        const WORDS_PER_UNIT = window.FLASK_WORDS_PER_UNIT || 100;
-        const PRICE_PER_UNIT = window.FLASK_PRICE_PER_UNIT || 10;
-        const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 15;
+        
+        const WORDS_PER_UNIT = window.FLASK_WORDS_PER_UNIT || 275;
+        const PRICE_PER_UNIT = window.FLASK_PRICE_PER_UNIT || 49;
+        const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 49;
+        const FORMAT_ONLY_PRICE_PER_UNIT = window.FLASK_FORMAT_ONLY_PRICE_PER_UNIT || 19;
+        
         const MIN_WORDS = 275;
         const MAX_WORDS = 1925;
         const POLLING_RATE = 1000;
@@ -795,8 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const typeAnimation = {
             element: DOMElements.typingText,
-            // --- THIS IS THE MODIFIED LINE ---
-            text: "Humanized content will appear here!",
+            text: "Your formatted document will appear here. Tasks that fail Turnitin's AI detection are eligible for a 100% refund for any words that were not successfully humanized.",
             speed: 75,
             currentIndex: 0,
             intervalId: null,
@@ -841,7 +843,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!DOMElements.inputText) return;
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
                 const humanizerMode = document.querySelector('input[name="humanizer_mode"]:checked')?.value || 'standard';
-                const currentPrice = (humanizerMode === 'essay') ? ESSAY_PRICE_PER_UNIT : PRICE_PER_UNIT;
+                
+                let currentPrice;
+                if (humanizerMode === 'essay') {
+                    currentPrice = ESSAY_PRICE_PER_UNIT;
+                } else if (humanizerMode === 'document_formatter') {
+                    currentPrice = FORMAT_ONLY_PRICE_PER_UNIT;
+                } else {
+                    currentPrice = PRICE_PER_UNIT;
+                }
+                
                 const cost = (words / WORDS_PER_UNIT) * currentPrice;
                 if (DOMElements.wordCountDisplay) DOMElements.wordCountDisplay.textContent = words;
                 if (DOMElements.estimatedCostDisplay) DOMElements.estimatedCostDisplay.textContent = `KSh ${cost.toFixed(2)}`;
@@ -1046,7 +1057,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         if (DOMElements.humanizeForm) {
-            // --- THIS IS THE MODIFIED LINE ---
             if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false;
 
             DOMElements.inputText.oninput = UI.updateWordCountAndCost;
