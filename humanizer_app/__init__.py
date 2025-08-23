@@ -40,6 +40,11 @@ def create_app():
 
     # --- Model configuration ---
     MODELS = {
+        "gemini-2.5-pro": {
+            "api_id": "gemini-2.5-pro-2025-08-08",
+            "price_per_word": 0.015,
+            "label": "Gemini 2.5 Pro"
+        },
         "gpt-5": {
             "api_id": "gpt-5-2025-08-07",
             "price_per_word": 0.012,
@@ -51,7 +56,7 @@ def create_app():
             "label": "ChatGPT 4o"
         }
     }
-    DEFAULT_MODEL_KEY = "gpt-5"
+    DEFAULT_MODEL_KEY = "gpt-5"  # Changed back to gpt-5
     app.config["MODELS"] = MODELS
     app.config["DEFAULT_MODEL_KEY"] = DEFAULT_MODEL_KEY
     app.config['DEFAULT_MODEL'] = os.environ.get('DEFAULT_MODEL', DEFAULT_MODEL_KEY)
