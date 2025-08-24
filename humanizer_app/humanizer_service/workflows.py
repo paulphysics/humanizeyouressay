@@ -61,6 +61,15 @@ def perform_humanization_task(input_text: str, diff_data: dict, dialect: str = "
     if output_format != 'plain_text' and not original_text.lstrip().startswith('#'):
         current_diff_data['generated_title'] = generate_title_openai(original_text)
 
+    # **FIX:** Moved reference formatting to run for all modes if bibtex_input exists.
+    formatted_references = []
+    if current_diff_data.get('bibtex_input'):
+        citation_style = current_diff_data.get('output_format', 'apa_7')
+        formatted_references = format_references_with_openai(
+            current_diff_data['bibtex_input'], citation_style
+        )
+        current_diff_data['formatted_references'] = formatted_references
+
     if mode == "document_formatter":
         final_text = convert_dialect_spellings_only(original_text, dialect)
         failed_word_count = 0
@@ -71,15 +80,7 @@ def perform_humanization_task(input_text: str, diff_data: dict, dialect: str = "
         failed_word_count = 0
         total_paragraph_word_count = sum(count_words(content) for content_type, content in structured_content if content_type == 'paragraph')
         
-        formatted_references = []
         citation_counter = defaultdict(int)
-        
-        if mode == 'essay' and current_diff_data.get('bibtex_input'):
-            citation_style = current_diff_data.get('output_format', 'apa_7')
-            formatted_references = format_references_with_openai(
-                current_diff_data['bibtex_input'], citation_style
-            )
-            current_diff_data['formatted_references'] = formatted_references
 
         paragraphs = [(i, content) for i, (ctype, content) in enumerate(structured_content) if ctype == 'paragraph']
         num_paragraphs = len(paragraphs)
