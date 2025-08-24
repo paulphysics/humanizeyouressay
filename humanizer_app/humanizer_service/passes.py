@@ -29,10 +29,7 @@ def convert_dialect_spellings_only(text: str, dialect: str = "us") -> str:
             system_message=prompt,
             user_prompt=text,
             temperature=0.0,
-            top_p=1.0,
-            presence_penalty=0.0,
-            frequency_penalty=0.0
-            # FIX: Removed invalid 'max_tokens' argument
+            top_p=1.0
         )
         return corrected_text
     except Exception as e:
@@ -51,10 +48,7 @@ def generate_title_openai(text: str) -> str:
             system_message=prompt,
             user_prompt=text,
             temperature=0.7,
-            top_p=1.0,
-            presence_penalty=0.0,
-            frequency_penalty=0.0
-            # FIX: Removed invalid 'max_tokens' argument
+            top_p=1.0
         )
         return title.strip().strip('"')
     except Exception as e:
@@ -90,10 +84,7 @@ def format_references_with_openai(references_text: str, style: str) -> list:
             system_message=prompt,
             user_prompt=references_text,
             temperature=0.0,
-            top_p=1.0,
-            presence_penalty=0.0,
-            frequency_penalty=0.0
-            # FIX: Removed invalid 'max_tokens' argument
+            top_p=1.0
         )
         
         import ast
