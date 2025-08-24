@@ -160,59 +160,59 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
-        # --- START: MODIFIED SECTION ---
-        # Define the custom identities for your models
         model_identities = {
             "gpt-5": "You are a helpful assistant powered by ChatGPT 5. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
             "gpt-4o": "You are a helpful assistant powered by ChatGPT 4o. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
-            # Add other specific models here
         }
 
-        # Get the appropriate identity for the selected model
-        # Defaults to a generic persona if the model isn't in our dictionary
         system_identity = model_identities.get(model_key, "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).")
         
         system_prompt = {
             "role": "system",
             "content": system_identity
         }
-        # --- END: MODIFIED SECTION ---
         
         final_messages = [system_prompt] + message_history
 
         output_text = ""
-        # --- Logic to switch between OpenAI and Gemini ---
         if "gemini" in model_key:
             if not os.getenv("GOOGLE_API_KEY"):
                 raise Exception("Google API key is not configured.")
             
             gemini_model = genai.GenerativeModel(model_info['api_id'])
             
-            # --- START: CORRECTED Gemini Message Formatting ---
             gemini_messages = []
             for message in final_messages:
-                # Gemini uses 'user' and 'model' roles, and doesn't have a 'system' role.
-                # The system prompt is prepended to the user content.
                 role = "user" if message["role"] in ["user", "system"] else "model"
                 
                 content = message["content"]
                 parts = []
 
                 if isinstance(content, list):
-                    # Handle complex content (e.g., with images)
                     for part in content:
                         if part.get("type") == "text":
                             parts.append(part["text"])
                 elif isinstance(content, str):
-                    # Handle simple string content
                     parts.append(content)
                 
                 if parts:
                     gemini_messages.append({'role': role, 'parts': parts})
-            # --- END: CORRECTED Gemini Message Formatting ---
 
             response = gemini_model.generate_content(gemini_messages)
-            output_text = response.text
+            
+            # +++ START OF MODIFIED CODE +++
+            # Safely access the response text to prevent crashes from safety filters
+            try:
+                output_text = response.text
+            except ValueError:
+                # This block runs if response.text fails
+                finish_reason = response.candidates[0].finish_reason if response.candidates else 'UNKNOWN'
+                error_message = f"The AI model did not return a valid response. This can happen if the prompt violates safety policies. (Reason: {finish_reason})"
+                logger.warning(f"Gemini response for task {task.id} was blocked or empty. Reason: {finish_reason}")
+                
+                # Use the error message as the output
+                output_text = error_message
+            # +++ END OF MODIFIED CODE +++
 
         elif "gpt" in model_key:
             response = openai_client.chat.completions.create(
@@ -222,7 +222,6 @@ def process_playground_chat_task(self, task_id: int):
             output_text = response.choices[0].message.content or ""
         else:
             raise Exception(f"Model key '{model_key}' does not specify a known provider (gpt or gemini).")
-        # --- END ---
 
         if len(past_messages) == 1 and past_messages[0].role == 'user':
             try:
