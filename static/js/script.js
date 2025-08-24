@@ -133,14 +133,10 @@ document.addEventListener('DOMContentLoaded', () => {
             dropZone: document.getElementById('drop-zone'),
             conversationIdInput: document.getElementById('conversation-id-storage'),
             clearHistoryBtn: document.getElementById('clear-history-btn'),
-            // +++ START OF ADDED CODE +++
             wordCountDisplay: document.getElementById('word-count-display')
-            // +++ END OF ADDED CODE +++
         };
         
-        // +++ START OF ADDED CODE +++
         const WORD_LIMIT = 1000;
-        // +++ END OF ADDED CODE +++
 
         const sidebarOverlay = document.createElement('div');
         sidebarOverlay.classList.add('sidebar-overlay');
@@ -307,9 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToLog('user', displayMessage);
            
             DOMElements.promptInput.value = '';
-            // +++ START OF ADDED CODE +++
             DOMElements.promptInput.dispatchEvent(new Event('input')); // Reset word count and button state
-            // +++ END OF ADDED CODE +++
             attachedFiles = [];
             renderAttachedFiles();
 
@@ -728,13 +722,18 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
         
-        // +++ START OF ADDED CODE +++
+        // +++ START OF MODIFIED CODE +++
         if (DOMElements.promptInput && DOMElements.generateBtn && DOMElements.wordCountDisplay) {
+            // Hide the word count display initially
+            DOMElements.wordCountDisplay.style.display = 'none';
+
             DOMElements.promptInput.addEventListener('input', () => {
                 const trimmedValue = DOMElements.promptInput.value.trim();
                 const words = trimmedValue ? trimmedValue.split(/\s+/).filter(Boolean) : [];
                 const wordCount = words.length;
 
+                // Show the display only if the user is typing
+                DOMElements.wordCountDisplay.style.display = trimmedValue ? 'block' : 'none';
                 DOMElements.wordCountDisplay.textContent = `${wordCount} / ${WORD_LIMIT} words`;
 
                 if (wordCount > WORD_LIMIT) {
@@ -746,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-        // +++ END OF ADDED CODE +++
+        // +++ END OF MODIFIED CODE +++
 
         if (DOMElements.promptInput) DOMElements.promptInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } };
         if (DOMElements.uploadBtn) DOMElements.uploadBtn.onclick = () => DOMElements.fileInput?.click();
