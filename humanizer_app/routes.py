@@ -231,13 +231,6 @@ def playground_chat():
             user_prompt_text = part.get("text", "").strip()
             text_part_index = i
             break
-            
-    # +++ START OF ADDED CODE +++
-    # Word count validation
-    word_count = len(user_prompt_text.split())
-    if word_count > 1000:
-        return jsonify({'error': 'Your message exceeds the 1000-word limit.'}), 400
-    # +++ END OF ADDED CODE +++
 
     if user_prompt_text.lower().startswith('/search '):
         search_query = user_prompt_text[8:]
