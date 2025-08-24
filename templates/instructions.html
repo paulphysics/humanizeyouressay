@@ -35,16 +35,6 @@
                 <p class="text-gray-700 leading-relaxed mb-4">
                     Properly formatting your input text is the most important step for getting a high-quality result. The tool relies on specific cues to understand the structure of your document.
                 </p>
-                <div class="bg-gray-100 p-4 rounded-lg">
-                    <h3 class="font-semibold text-lg mb-2">Paragraphs: Use Blank Lines</h3>
-                    <p class="text-gray-700 leading-relaxed mb-3">
-                        You <strong>must</strong> separate every paragraph with a blank line (by pressing "Enter" twice). The system detects paragraphs by looking for double newlines (`\n\n`). 
-                        <span class="block mt-2 bg-green-100 text-green-800 p-2 rounded-md"><strong>Good news:</strong> Text copied directly from ChatGPT, Gemini, and other major chatbots is usually already in this correct format.</span>
-                    </p>
-                    <p class="text-red-700 font-medium mt-3">
-                        <strong class="font-bold">Warning:</strong> If you do not use blank lines, the tool will treat your entire document as a single paragraph. This will prevent the citation and formatting logic from working correctly.
-                    </p>
-                </div>
                 <div class="bg-gray-100 p-4 rounded-lg mt-4">
                     <h3 class="font-semibold text-lg mb-2">Headings & Subheadings: Use Markdown</h3>
                     <p class="text-gray-700 leading-relaxed mb-3">
@@ -76,10 +66,10 @@
                     <li><strong class="font-semibold">Standard:</strong> This mode is focused on synonym replacement and rephrasing. It is designed to make AI text sound more natural while strictly adhering to the original word count. This mode can only be used with the "Plain Text" output format.</li>
                     <li><strong class="font-semibold">Essay (In-text Citations):</strong> This is the most powerful mode for academic writing and requires a `.docx` output format (APA, MLA, or Harvard). It performs a multi-step process:
                         <ul class="list-decimal list-inside space-y-2 pl-6 mt-2">
-                            <li>It first generates a suitable title for your paper.</li>
-                            <li>It then formats the references you provide into your chosen academic style.</li>
-                            <li>Next, it goes through your body paragraphs one by one, deciding which of your references are contextually relevant to each paragraph.</li>
-                            <li>It rewrites the paragraphs to integrate these citations naturally. Note: a maximum of 3 citations will be added to any single paragraph, and each reference will be used a maximum of 4 times throughout the document.</li>
+                            <li><strong>Automatic Title:</strong> No need to add a title. It will be done for you, but you can edit it later if you don't like the provided one.</li>
+                            <li><strong>Reference Formatting:</strong> It formats the references you provide into your chosen academic style.</li>
+                            <li><strong>Contextual In-text Citations (Free Beta):</strong> It rewrites your body paragraphs to integrate relevant citations naturally. This is a beta feature, so users only pay for the humanization, not the addition of in-text citations.</li>
+                             <li><strong>Source Relevance:</strong> Make sure the sources you provide are closely related to your essay's topic. Otherwise, they will appear in the reference list but won't be used as in-text citations.</li>
                         </ul>
                     </li>
                     <li><strong class="font-semibold">Document Formatter (No Humanization):</strong> This mode <strong>does not rewrite your content</strong>. It is a utility for quickly formatting a paper and requires a `.docx` output format. It will perform the following actions:
@@ -90,6 +80,7 @@
                             <li>Add page numbers and headers according to your chosen style (APA 7, MLA 9, or Harvard).</li>
                         </ul>
                     </li>
+                     <li><strong class="font-semibold">AI Playground:</strong> This is an interactive chat environment where you can experiment with various AI models. It's a great space to brainstorm ideas, get writing assistance, or explore the capabilities of AI. Your conversations are saved for future reference.</li>
                 </ul>
             </div>
 
