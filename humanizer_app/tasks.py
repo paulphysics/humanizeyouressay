@@ -160,10 +160,24 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
+        # --- START: MODIFIED SECTION ---
+        # Define the custom identities for your models
+        model_identities = {
+            "gpt-5": "You are a helpful assistant powered by ChatGPT 5. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
+            "gpt-4o": "You are a helpful assistant powered by ChatGPT 4o. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
+            # Add other specific models here
+        }
+
+        # Get the appropriate identity for the selected model
+        # Defaults to a generic persona if the model isn't in our dictionary
+        system_identity = model_identities.get(model_key, "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).")
+        
         system_prompt = {
             "role": "system",
-            "content": "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```)."
+            "content": system_identity
         }
+        # --- END: MODIFIED SECTION ---
+        
         final_messages = [system_prompt] + message_history
 
         output_text = ""
@@ -178,6 +192,7 @@ def process_playground_chat_task(self, task_id: int):
             gemini_messages = []
             for message in final_messages:
                 # Gemini uses 'user' and 'model' roles, and doesn't have a 'system' role.
+                # The system prompt is prepended to the user content.
                 role = "user" if message["role"] in ["user", "system"] else "model"
                 
                 content = message["content"]
@@ -193,7 +208,7 @@ def process_playground_chat_task(self, task_id: int):
                     parts.append(content)
                 
                 if parts:
-                     gemini_messages.append({'role': role, 'parts': parts})
+                    gemini_messages.append({'role': role, 'parts': parts})
             # --- END: CORRECTED Gemini Message Formatting ---
 
             response = gemini_model.generate_content(gemini_messages)
