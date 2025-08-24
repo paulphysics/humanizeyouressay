@@ -42,8 +42,7 @@ def rewrite_paragraph_with_citations_openai(paragraph: str, references: list, ci
             temperature=0.5,
             top_p=1.0,
             presence_penalty=0.0,
-            frequency_penalty=0.0,
-            max_tokens=1024
+            frequency_penalty=0.0
         )
         for ref in available_references:
             if ref.split(',')[0].split(' ')[-1] in new_paragraph:
