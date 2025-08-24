@@ -231,7 +231,7 @@ def playground_chat():
             user_prompt_text = part.get("text", "").strip()
             text_part_index = i
             break
-    
+
     # +++ START OF RE-ADDED CODE +++
     # Word count validation
     word_count = len(user_prompt_text.split())
@@ -785,7 +785,12 @@ def get_conversation_messages(conv_id):
     conversation = Conversation.query.filter_by(id=conv_id, user_id=user.id).first_or_404()
     messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
     message_list = [{"role": msg.role, "content": msg.content} for msg in messages]
-    return jsonify(message_list)
+    # +++ START OF MODIFIED CODE +++
+    return jsonify({
+        "messages": message_list,
+        "model_key": conversation.model_key
+    })
+    # +++ END OF MODIFIED CODE +++
 
 @main_bp.route("/conversation/<int:conv_id>", methods=['DELETE'])
 @auth_required
