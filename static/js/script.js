@@ -798,7 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const typeAnimation = {
             element: DOMElements.typingText,
-            text: "Your formatted document will appear here. Tasks that fail Turnitin's AI detection are eligible for a 100% refund for any words that were not successfully humanized.",
+            text: "Your output/download link will appear here. Tasks that fail Turnitin's AI detection are eligible for refunds for any words that were not successfully humanized.",
             speed: 75,
             currentIndex: 0,
             intervalId: null,
