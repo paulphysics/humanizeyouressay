@@ -28,27 +28,23 @@ if OPENAI_API_KEY:
 else:
     logger.warning("OPENAI_API_KEY not set. Advanced features will be disabled.")
 
-
 def _call_openai_api(instructions: str, user_input: str, model: str, **kwargs) -> tuple[str, bool]:
     if not openai_client:
         raise ValueError("OpenAI client is not initialized.")
     
     logger.info(f"Sending request to OpenAI Responses API with model: {model}.")
     
-    # Define valid parameters for the OpenAI API call to avoid sending unsupported arguments
+    # **FIX:** Removed 'presence_penalty' and 'frequency_penalty' as they are not supported.
     valid_params = {
         "model": model,
         "instructions": instructions,
         "input": user_input,
-        "temperature": kwargs.get("temperature", 0.7), # Default value if not provided
-        "top_p": kwargs.get("top_p", 1.0),             # Default value if not provided
-        "presence_penalty": kwargs.get("presence_penalty", 0.0),
-        "frequency_penalty": kwargs.get("frequency_penalty", 0.0),
+        "temperature": kwargs.get("temperature", 0.7),
+        "top_p": kwargs.get("top_p", 1.0),
         "timeout": 120.0
     }
 
     try:
-        # Pass only the valid parameters to the create method
         response = openai_client.responses.create(**valid_params)
         
         if response.output_text:
@@ -59,13 +55,10 @@ def _call_openai_api(instructions: str, user_input: str, model: str, **kwargs) -
         logger.error(f"OpenAI Responses API call failed for model {model}: {e}")
         return "", False
     except TypeError as e:
-        # This will catch errors if an unexpected keyword argument is still passed
-        logger.error(f"TypeError during OpenAI API call. This may be due to an unsupported parameter being passed. Error: {e}")
+        logger.error(f"TypeError during OpenAI API call. Likely an unsupported parameter. Error: {e}")
         return "", False
 
-
 def call_api_with_fallback(model_list: list, system_message: str, user_prompt: str, **kwargs) -> str:
-    # This function is now a wrapper for the new API call structure
     for model in model_list:
         content, success = _call_openai_api(instructions=system_message, user_input=user_prompt, model=model, **kwargs)
         if success and content.strip():
@@ -76,9 +69,8 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
         debug_info="All OpenAI models failed to generate a response."
     )
 
-
 def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
-    # ... (This function remains unchanged as it calls a different service)
+    # This function remains unchanged
     if not paragraph or not paragraph.strip():
         return paragraph, True
     sanitized_paragraph = paragraph.replace('’', "'").replace('‘', "'").replace('”', '"').replace('“', '"').replace('\u00a0', ' ')
@@ -102,8 +94,8 @@ def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
     except requests.exceptions.RequestException as e:
         raise CustomApiError(debug_info=f"Request failed: {e}") from e
 
-
 def call_single_openai_model(user_prompt: str, model: str) -> str:
+    # This function remains unchanged
     if not openai_client:
         raise ValueError("OpenAI client is not initialized.")
     
