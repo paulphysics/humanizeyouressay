@@ -36,6 +36,14 @@ from .humanizer_service.api_clients import call_single_openai_model
 from .humanizer_service.api_clients import openai_client
 from .tasks import process_playground_chat_task, process_humanization_task
 
+@main_bp.before_request
+def redirect_non_www_to_www():
+    """Redirect non-www requests to www for canonicalization."""
+    if not request.host.startswith('www.') and 'herokuapp' not in request.host:
+        new_host = f"www.{request.host}"
+        new_url = f"{request.scheme}://{new_host}{request.full_path}"
+        return redirect(new_url, code=301)
+
 main_bp = Blueprint('main', __name__)
 KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
 logger = logging.getLogger(__name__)
