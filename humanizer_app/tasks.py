@@ -1,4 +1,3 @@
-# FILE: humanizer_app/tasks.py
 import logging
 import json
 from celery import shared_task
@@ -264,6 +263,7 @@ def process_playground_chat_task(self, task_id: int):
         if user.wallet.balance < total_cost:
             raise Exception("Insufficient funds detected during task execution.")
 
+        # --- BILLING AND COMMISSION LOGIC ---
         user.wallet.balance -= total_cost
         db.session.add(Transaction(
             wallet_id=user.wallet.id,
@@ -271,6 +271,20 @@ def process_playground_chat_task(self, task_id: int):
             transaction_type='playground_fee',
             description=f"CONV-{conversation.id}: {output_word_count} words"
         ))
+        
+        # --- REFERRAL COMMISSION LOGIC START ---
+        if user.referred_by:
+            referrer = User.query.get(user.referred_by)
+            if referrer and referrer.wallet:
+                commission_amount = total_cost * 0.10  # 10% commission
+                referrer.wallet.balance += commission_amount
+                db.session.add(Transaction(
+                    wallet_id=referrer.wallet.id,
+                    amount=commission_amount,
+                    transaction_type='referral_commission',
+                    description=f'10% commission from {user.email} (Playground)'
+                ))
+        # --- REFERRAL COMMISSION LOGIC END ---
 
         db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
 
