@@ -1,4 +1,3 @@
-# humanizer_app/models.py
 """
 This module defines the database models for the application.
 """
@@ -16,6 +15,11 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=True)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    
+    # --- REFERRAL SYSTEM ADDITIONS START ---
+    referral_code = db.Column(db.String(20), unique=True, nullable=True)
+    referred_by = db.Column(db.String(128), db.ForeignKey('user.id'), nullable=True)
+    # --- REFERRAL SYSTEM ADDITIONS END ---
     
     tasks = db.relationship('Task', back_populates='user', lazy=True)
     wallet = db.relationship('Wallet', back_populates='user', uselist=False, cascade="all, delete-orphan")
