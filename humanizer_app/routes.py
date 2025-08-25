@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 from flask import (Blueprint, request, render_template, jsonify, send_file,
-                 redirect, url_for, flash, current_app, session, abort)
+                   redirect, url_for, flash, current_app, session, abort)
 from werkzeug.utils import secure_filename
 import zipfile
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -174,9 +174,9 @@ def transaction_history():
 
     for t in transactions:
         if hasattr(t, 'created_at') and t.created_at:
-                  t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
+                t.created_at_local_str = t.created_at.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Africa/Nairobi')).strftime('%Y-%m-%d %H:%M')
         else:
-                  t.created_at_local_str = 'N/A'
+                t.created_at_local_str = 'N/A'
 
         t.task = None
         t.display_title = t.description or 'N/A'
@@ -455,6 +455,20 @@ def _handle_logged_in_humanization():
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
                                    transaction_type='humanize_fee', description=transaction_ref))
+
+        # --- REFERRAL COMMISSION LOGIC START ---
+        if user.referred_by:
+            referrer = User.query.get(user.referred_by)
+            if referrer and referrer.wallet:
+                commission_amount = amount_to_charge * 0.10  # 10% commission
+                referrer.wallet.balance += commission_amount
+                db.session.add(Transaction(
+                    wallet_id=referrer.wallet.id,
+                    amount=commission_amount,
+                    transaction_type='referral_commission',
+                    description=f'10% commission from user {user.email}'
+                ))
+        # --- REFERRAL COMMISSION LOGIC END ---
 
         output_format = data.get("output_format", "plain_text")
         bibtex_input = data.get("bibtex_input", "")
