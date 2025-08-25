@@ -1,4 +1,4 @@
-from flask import Blueprint, request, make_response, session, redirect, url_for, render_template
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
 from firebase_admin import auth
 from functools import wraps
 from .extensions import db
@@ -82,7 +82,12 @@ def authorize():
             'name': user.name
         }
         session.permanent = True
-        return "Login successful", 200
+        
+        # --- MODIFICATION START ---
+        # Return a JSON object with the user's admin status
+        return jsonify({"message": "Login successful", "is_admin": user.is_admin}), 200
+        # --- MODIFICATION END ---
+
     except Exception as e:
         print(f"An error occurred during authorization: {e}")
         return f"An error occurred: {e}", 500
