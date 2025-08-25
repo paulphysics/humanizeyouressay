@@ -14,7 +14,7 @@ from flask import (Blueprint, request, render_template, jsonify, send_file,
 from werkzeug.utils import secure_filename
 import zipfile
 from werkzeug.exceptions import RequestEntityTooLarge
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func # --- MODIFIED: Added func ---
 import pytz
 import difflib
 
@@ -211,6 +211,44 @@ def transaction_history():
                            pagination=pagination,
                            wallet_balance=user.wallet.balance,
                            is_admin=user.is_admin)
+
+# --- NEW ROUTE START ---
+@main_bp.route("/referrals")
+@auth_required
+def referrals_page():
+    """
+    Displays the user's referral statistics, including referred users and earnings.
+    """
+    user = User.query.get_or_404(session['user']['uid'])
+    username = get_display_name(user)
+    
+    # Query for users who were referred by the current user
+    referred_users = User.query.filter_by(referred_by=user.id).order_by(User.created_at.desc()).all()
+    
+    # Calculate total referral earnings from commission transactions
+    total_earnings = db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.wallet_id == user.wallet.id,
+        Transaction.transaction_type == 'referral_commission'
+    ).scalar() or 0.0
+
+    # Also include signup bonuses if you have them
+    signup_bonuses = db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.wallet_id == user.wallet.id,
+        Transaction.transaction_type == 'referral_signup_bonus'
+    ).scalar() or 0.0
+
+    total_earnings += signup_bonuses
+
+    return render_template(
+        "referrals.html",
+        user=user,
+        username=username,
+        wallet_balance=user.wallet.balance,
+        referred_users=referred_users,
+        total_earnings=total_earnings,
+        is_admin=user.is_admin
+    )
+# --- NEW ROUTE END ---
 
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
