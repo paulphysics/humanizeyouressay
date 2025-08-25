@@ -107,19 +107,42 @@ class MyAdminIndexView(AdminIndexView):
     @expose('/export-corpus')
     def export_corpus(self):
         # +++ START OF MODIFIED CODE +++
-        # Corrected the filter to use .as_string() for JSONB queries
+        # Get date range from query parameters, with defaults
+        start_date_str = request.args.get('start_date', (date.today() - timedelta(days=6)).strftime('%Y-%m-%d'))
+        end_date_str = request.args.get('end_date', date.today().strftime('%Y-%m-%d'))
+        
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            flash('Invalid date format for export. Using default range.', 'warning')
+            start_date = date.today() - timedelta(days=6)
+            end_date = date.today()
+
         tasks = Task.query.filter(
             Task.status == 'humanization_complete',
-            Task.diff_data['humanizer_mode'].as_string() != 'document_formatter'
+            Task.diff_data['humanizer_mode'].as_string() != 'document_formatter',
+            Task.created_at.between(start_date, end_date + timedelta(days=1)) # Apply date filter
         ).all()
-        # +++ END OF MODIFIED CODE +++
+        
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['Transaction ID', 'Input Text', 'Output Text'])
+        
         for task in tasks:
             writer.writerow([task.external_reference, task.input_text, task.humanized_output])
+            
         output.seek(0)
-        return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=humanizer_corpus.csv"})
+        
+        # Create a dynamic filename
+        filename = f"humanizer_corpus_{start_date_str}_to_{end_date_str}.csv"
+        
+        return Response(
+            output,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+        # +++ END OF MODIFIED CODE +++
 
 # --- BASE AUTHENTICATED VIEW ---
 class AuthenticatedModelView(ModelView):
