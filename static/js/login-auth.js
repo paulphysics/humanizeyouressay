@@ -17,31 +17,50 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
             const idToken = await user.getIdToken();
-            loginUser(idToken);
+
+            // --- MODIFICATION START ---
+            // Get the referral code from the input field
+            const referralCodeInput = document.getElementById('referral-code-input');
+            const referralCode = referralCodeInput ? referralCodeInput.value.trim() : null;
+            
+            // Pass the token and code to the login function
+            loginUser(idToken, referralCode);
+            // --- MODIFICATION END ---
+
         } catch (error) {
             console.error("Google Auth Error: ", error);
             if(errorMsgEmail) errorMsgEmail.textContent = "Google sign-in failed. Please try again.";
         }
     }
 
-    function loginUser(idToken, isNewSignUp = false) {
+    // --- MODIFICATION START ---
+    // The function now accepts a referralCode
+    function loginUser(idToken, referralCode = null) {
         return fetch('/auth', {
             method: 'POST',
             headers: {
+                // This header is essential for the backend to understand the request
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${idToken}`
-            }
+            },
+            // The body is now a JSON string containing the referral code
+            body: JSON.stringify({
+                referral_code: referralCode
+            })
         }).then(response => {
             if (response.ok) {
-                window.location.href = '/'; 
+                window.location.href = '/playground'; // Redirect to playground on success
             } else {
-                console.error('Server login failed');
-                if(errorMsgPassword) errorMsgPassword.textContent = "Server login failed. Please try again.";
+                response.text().then(text => { // Get more detailed error from server
+                    console.error('Server login failed:', text);
+                    if(errorMsgPassword) errorMsgPassword.textContent = "Server login failed. Please try again.";
+                });
             }
         }).catch(error => {
             console.error('Fetch Error:', error);
         });
     }
+    // --- MODIFICATION END ---
     
     if (signInWithGoogleButtonEl) {
         signInWithGoogleButtonEl.addEventListener("click", handleGoogleAuth);
