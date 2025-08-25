@@ -106,15 +106,17 @@ class MyAdminIndexView(AdminIndexView):
 
     @expose('/export-corpus')
     def export_corpus(self):
+        # +++ START OF MODIFIED CODE +++
+        # Corrected the filter to use .as_string() for JSONB queries
         tasks = Task.query.filter(
             Task.status == 'humanization_complete',
-            Task.diff_data['humanizer_mode'].astext != 'document_formatter'
+            Task.diff_data['humanizer_mode'].as_string() != 'document_formatter'
         ).all()
+        # +++ END OF MODIFIED CODE +++
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['Transaction ID', 'Input Text', 'Output Text'])
         for task in tasks:
-            # +++ FIX: Changed task.humanized_text to task.humanized_output +++
             writer.writerow([task.external_reference, task.input_text, task.humanized_output])
         output.seek(0)
         return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=humanizer_corpus.csv"})
