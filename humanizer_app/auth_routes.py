@@ -1,12 +1,11 @@
-# FILE: humanizer_app/auth_routes.py
-
 from flask import Blueprint, request, make_response, session, redirect, url_for, render_template
 from firebase_admin import auth
 from functools import wraps
 from .extensions import db
-from .models import User, Wallet
+from .models import User, Wallet, Transaction # Import Transaction
 from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT
 import os
+import uuid # Import uuid
 
 # Create a Blueprint for authentication routes
 auth_bp = Blueprint('auth', __name__)
@@ -25,12 +24,18 @@ def authorize():
     """
     Receives an ID token from the client, verifies it, creates/updates a local user
     and wallet, captures the user's name, and creates a server-side session.
+    Also handles referral codes for new users.
     """
     token = request.headers.get('Authorization')
     if not token or not token.startswith('Bearer '):
         return "Unauthorized", 401
 
     id_token = token.split('Bearer ')[1]
+    
+    # --- ADDITION: Get referral code from the request body ---
+    # The frontend now sends this in the JSON payload
+    data = request.get_json()
+    referral_code = data.get('referral_code') if data else None
 
     try:
         decoded_token = auth.verify_id_token(id_token, check_revoked=True)
@@ -38,34 +43,38 @@ def authorize():
         email = decoded_token.get('email')
         name = decoded_token.get('name')
 
-        # --- THIS IS THE FIX ---
-        # The primary key (user.id) should never be updated.
-        # This new logic finds a user by their unique Firebase ID (uid).
-        # If they don't exist, it creates them. If they do, it just updates their name.
-        
         user = User.query.get(uid)
 
         if not user:
-            # User does not exist in our database, so create them.
-            # We also check if a user with that email exists to provide a better error,
-            # but we do not link the accounts to prevent this exact error.
             if User.query.filter_by(email=email).first():
-                # A different account (e.g., from email/password) already uses this email.
-                # This is a rare edge case, but it's good to handle.
                 return "An account with a different sign-in method already exists for this email.", 409
 
             new_user = User(id=uid, email=email, name=name)
+            
+            # --- REFERRAL LOGIC START ---
+            # 1. Generate a unique referral code for the new user
+            new_user.referral_code = f"REF-{str(uuid.uuid4())[:8].upper()}"
+
+            # 2. Check if a referral code was provided and apply it
+            if referral_code:
+                referrer = User.query.filter_by(referral_code=referral_code).first()
+                if referrer:
+                    new_user.referred_by = referrer.id
+                    # Optional: Give the referrer a one-time bonus for a successful referral
+                    if referrer.wallet:
+                        referrer.wallet.balance += 5.0  # Example: 5 credit bonus
+                        db.session.add(Transaction(wallet_id=referrer.wallet.id, amount=5.0, transaction_type='referral_signup_bonus', description=f'Bonus for referring {email}'))
+            # --- REFERRAL LOGIC END ---
+
             new_wallet = Wallet(user=new_user, balance=0.0)
             db.session.add(new_user)
             db.session.add(new_wallet)
             db.session.commit()
             user = new_user
         else:
-            # User already exists, just update their name if it's new or different.
             if name and user.name != name:
                 user.name = name
                 db.session.commit()
-        # --- END OF FIX ---
 
         session['user'] = {
             'uid': user.id,
