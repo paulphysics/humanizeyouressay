@@ -114,7 +114,8 @@ class MyAdminIndexView(AdminIndexView):
         writer = csv.writer(output)
         writer.writerow(['Transaction ID', 'Input Text', 'Output Text'])
         for task in tasks:
-            writer.writerow([task.external_reference, task.input_text, task.humanized_text])
+            # +++ FIX: Changed task.humanized_text to task.humanized_output +++
+            writer.writerow([task.external_reference, task.input_text, task.humanized_output])
         output.seek(0)
         return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=humanizer_corpus.csv"})
 
