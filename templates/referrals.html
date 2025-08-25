@@ -13,11 +13,19 @@
                 Share this code to earn a 10% commission on every humanization task your friends complete.
             </p>
             <div class="bg-gray-100 p-4 rounded-lg flex items-center justify-between">
-                <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
-                <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
-                    Copy Code
-                </button>
-            </div>
+                
+                {% if user.referral_code %}
+                    <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
+                    <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
+                        Copy Code
+                    </button>
+                {% else %}
+                    <span id="referralCode" class="text-lg font-mono text-gray-500 italic">Referral code not generated yet.</span>
+                    <button class="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold cursor-not-allowed" disabled>
+                        Copy Code
+                    </button>
+                {% endif %}
+                </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
