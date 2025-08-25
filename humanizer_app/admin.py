@@ -107,7 +107,6 @@ class MyAdminIndexView(AdminIndexView):
     @expose('/export-corpus')
     def export_corpus(self):
         # +++ START OF MODIFIED CODE +++
-        # Get date range from query parameters, with defaults
         start_date_str = request.args.get('start_date', (date.today() - timedelta(days=6)).strftime('%Y-%m-%d'))
         end_date_str = request.args.get('end_date', date.today().strftime('%Y-%m-%d'))
         
@@ -122,7 +121,7 @@ class MyAdminIndexView(AdminIndexView):
         tasks = Task.query.filter(
             Task.status == 'humanization_complete',
             Task.diff_data['humanizer_mode'].as_string() != 'document_formatter',
-            Task.created_at.between(start_date, end_date + timedelta(days=1)) # Apply date filter
+            Task.created_at.between(start_date, end_date + timedelta(days=1))
         ).all()
         
         output = io.StringIO()
@@ -134,7 +133,6 @@ class MyAdminIndexView(AdminIndexView):
             
         output.seek(0)
         
-        # Create a dynamic filename
         filename = f"humanizer_corpus_{start_date_str}_to_{end_date_str}.csv"
         
         return Response(
