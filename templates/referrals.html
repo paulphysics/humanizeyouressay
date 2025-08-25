@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block title %}My Referrals{% endblock %}
+
+{% block content %}
+<main class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">My Referrals</h1>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Share Your Code 🚀</h2>
+            <p class="text-gray-600 mb-4">
+                Share this code to earn a 10% commission on every humanization task your friends complete.
+            </p>
+            <div class="bg-gray-100 p-4 rounded-lg flex items-center justify-between">
+                <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
+                <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
+                    Copy Code
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700">Total Referrals</h3>
+                <p class="text-4xl font-bold text-indigo-600">{{ referred_users|length }}</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700">Total Earnings</h3>
+                <p class="text-4xl font-bold text-green-600">KSh {{ "%.2f"|format(total_earnings) }}</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Referred Users</h2>
+            {% if referred_users %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="py-2 px-4 border-b text-left">Email</th>
+                            <th class="py-2 px-4 border-b text-left">Date Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for referred in referred_users %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b">{{ referred.email }}</td>
+                            <td class="py-2 px-4 border-b">{{ referred.created_at.strftime('%B %d, %Y') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500">You haven't referred anyone yet. Share your code to get started!</p>
+            {% endif %}
+        </div>
+    </div>
+</main>
+
+<script>
+function copyReferralCode() {
+    const referralCode = document.getElementById('referralCode').innerText;
+    navigator.clipboard.writeText(referralCode).then(() => {
+        alert('Referral code copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy referral code: ', err);
+        alert('Failed to copy code.');
+    });
+}
+</script>
+{% endblock %}
