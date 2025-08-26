@@ -40,6 +40,7 @@ def create_app():
 
     # --- Model configuration ---
     """
+    # Will add this back in later once I sort out payment issues with the provider
     "gemini-2.5-pro": {
             # --- FINAL CORRECTED API ID ---
             "api_id": "gemini-2.5-pro",
