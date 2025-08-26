@@ -1,5 +1,7 @@
 import { auth, provider } from "./firebase-config.js";
 import {
+    // ✅ FIX: Added the missing GoogleAuthProvider import
+    GoogleAuthProvider,
     signInWithPopup,
     sendEmailVerification,
     updateProfile
@@ -12,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMsgPassword = document.getElementById("password-error-message");
 
     async function handleGoogleAuth() {
+        // This provider is now correctly defined thanks to the import
+        const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ 'prompt': 'select_account' });
         try {
             const result = await signInWithPopup(auth, provider);
@@ -38,26 +42,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 referral_code: referralCode
             })
         })
-        // --- MODIFICATION START ---
         .then(response => {
             if (!response.ok) {
-                // If the server response is not successful, we'll skip to the .catch block
                 throw new Error('Server returned an error');
             }
-            // If successful, parse the JSON response to access its content
             return response.json();
         })
         .then(data => {
-            // Check the 'is_admin' flag sent from the server
             if (data.is_admin) {
-                // If the user is an admin, redirect to the admin dashboard
                 window.location.href = '/admin/dashboard';
             } else {
-                // Otherwise, redirect to the regular user playground
                 window.location.href = '/playground';
             }
         })
-        // --- MODIFICATION END ---
         .catch(error => {
             console.error('Fetch Error:', error);
             if(errorMsgPassword) errorMsgPassword.textContent = "Server login failed. Please try again.";
