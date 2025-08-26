@@ -1,22 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>View Task Output</title>
-    {% include '_head.html' %}
-</head>
-<body class="flex flex-col items-center min-h-screen px-4 bg-gray-50">
+{% extends "layout.html" %}
 
-    <header class="w-full max-w-4xl mx-auto flex justify-end items-center px-2 mb-4 py-4">
-        <nav>
-            <a href="{{ back_url }}" class="btn text-sm py-2 px-3">← Back to History</a>
-        </nav>
-    </header>
+{% block title %}View Task Output{% endblock %}
+
+{% block content %}
+<main class="w-full max-w-4xl mx-auto px-4 py-8">
+
+    <div class="w-full text-left mb-4">
+        <a href="{{ back_url }}" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 text-sm">← Back to History</a>
+    </div>
 
     <div id="js-alert-container" class="flash-message rounded-lg shadow-md hidden">
         <span id="js-alert-message"></span>
     </div>
 
-    <div class="max-w-4xl mx-auto card p-8 w-full">
+    <div class="card p-8 w-full">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">Task Output</h1>
         <p class="text-gray-500 mb-2">Reference: {{ task.external_reference }}</p>
         <p class="text-gray-500 mb-6">Mode: <span class="font-semibold">{{ humanizer_mode }}</span></p>
@@ -26,16 +23,17 @@
         </div>
         <p class="text-sm text-gray-500 mt-1">Word count: <span id="output_word_count_value">{{ task.output_word_count }}</span></p>
         <div class="text-center">
-            <button onclick="copyToClipboard('humanized_output_display')" class="btn mt-4 w-auto px-4 bg-green-600 hover:bg-green-700" title="Copy Humanized Text">
+            <button onclick="copyToClipboard('humanized_output_display')" class="mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center transition duration-300" title="Copy Humanized Text">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
             </button>
         </div>
     </div>
-    
-    {% include '_footer.html' %}
+</main>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
     let alertTimeout = null;
 
@@ -87,6 +85,4 @@
         document.body.removeChild(textarea);
     }
 </script>
-
-</body>
-</html>
+{% endblock %}
