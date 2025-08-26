@@ -2,10 +2,9 @@ from flask import Blueprint, request, jsonify, session, redirect, url_for, rende
 from firebase_admin import auth
 from functools import wraps
 from .extensions import db
-from .models import User, Wallet, Transaction # Import Transaction
-from .payment_service import WORDS_PER_UNIT, PRICE_PER_UNIT
+from .models import User, Wallet, Transaction
 import os
-import uuid # Import uuid
+import uuid
 
 # Create a Blueprint for authentication routes
 auth_bp = Blueprint('auth', __name__)
@@ -15,7 +14,7 @@ def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
-            return redirect(url_for('auth.login')) # Redirect to the login page
+            return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -32,8 +31,6 @@ def authorize():
 
     id_token = token.split('Bearer ')[1]
     
-    # --- ADDITION: Get referral code from the request body ---
-    # The frontend now sends this in the JSON payload
     data = request.get_json()
     referral_code = data.get('referral_code') if data else None
 
@@ -51,7 +48,7 @@ def authorize():
 
             new_user = User(id=uid, email=email, name=name)
             
-            # --- REFERRAL LOGIC START ---
+            # --- REFERRAL LOGIC ---
             # 1. Generate a unique referral code for the new user
             new_user.referral_code = f"REF-{str(uuid.uuid4())[:8].upper()}"
 
@@ -60,11 +57,9 @@ def authorize():
                 referrer = User.query.filter_by(referral_code=referral_code).first()
                 if referrer:
                     new_user.referred_by = referrer.id
-                    # Optional: Give the referrer a one-time bonus for a successful referral
-                    if referrer.wallet:
-                        referrer.wallet.balance += 5.0  # Example: 5 credit bonus
-                        db.session.add(Transaction(wallet_id=referrer.wallet.id, amount=5.0, transaction_type='referral_signup_bonus', description=f'Bonus for referring {email}'))
-            # --- REFERRAL LOGIC END ---
+                    # --- MODIFICATION START ---
+                    # The initial signup bonus for the referrer has been removed as requested.
+                    # --- MODIFICATION END ---
 
             new_wallet = Wallet(user=new_user, balance=0.0)
             db.session.add(new_user)
@@ -83,10 +78,7 @@ def authorize():
         }
         session.permanent = True
         
-        # --- MODIFICATION START ---
-        # Return a JSON object with the user's admin status
         return jsonify({"message": "Login successful", "is_admin": user.is_admin}), 200
-        # --- MODIFICATION END ---
 
     except Exception as e:
         print(f"An error occurred during authorization: {e}")
@@ -129,5 +121,5 @@ def signup():
 
 @auth_bp.route('/logout')
 def logout():
-    session.pop('user', None) # Clear the user session
+    session.pop('user', None)
     return redirect(url_for('auth.login'))
