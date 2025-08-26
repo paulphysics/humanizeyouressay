@@ -1,89 +1,78 @@
 {% extends "layout.html" %}
 
-{% block title %}View Task Output{% endblock %}
+{% block title %}Task Details{% endblock %}
 
 {% block content %}
-<main class="w-full max-w-4xl mx-auto px-4 py-8">
-
-    <div class="w-full text-left mb-4">
-        <a href="{{ back_url }}" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 text-sm">← Back to History</a>
-    </div>
-
-    <div id="js-alert-container" class="flash-message rounded-lg shadow-md hidden">
-        <span id="js-alert-message"></span>
-    </div>
-
-    <div class="card p-8 w-full">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">Task Output</h1>
-        <p class="text-gray-500 mb-2">Reference: {{ task.external_reference }}</p>
-        <p class="text-gray-500 mb-6">Mode: <span class="font-semibold">{{ humanizer_mode }}</span></p>
-
-        <div id="humanized_output_display" class="humanized-output-text w-full p-4 border border-gray-300 rounded-lg bg-gray-50 break-words whitespace-pre-wrap">
-            {{ html_output|safe }}
+<div id="task-view-container" class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Task Details</h1>
+                <p class="text-sm text-gray-500">Task ID: {{ task.id }}</p>
+            </div>
+            <span class="px-3 py-1 text-sm font-semibold rounded-full
+                {% if task.status == 'complete' %} bg-green-100 text-green-800
+                {% elif task.status == 'humanization_failed' %} bg-red-100 text-red-800
+                {% else %} bg-yellow-100 text-yellow-800
+                {% endif %}">
+                {{ task.status.replace('_', ' ')|title }}
+            </span>
         </div>
-        <p class="text-sm text-gray-500 mt-1">Word count: <span id="output_word_count_value">{{ task.output_word_count }}</span></p>
-        <div class="text-center">
-            <button onclick="copyToClipboard('humanized_output_display')" class="mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center transition duration-300" title="Copy Humanized Text">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-            </button>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Task Information</h2>
+                <div class="space-y-2 text-sm">
+                    <p><strong>Created At:</strong> {{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                    <p><strong>Mode:</strong> {{ task.humanizer_mode|title }}</p>
+                    <p><strong>Format:</strong> {{ task.output_format.replace('_', ' ')|title }}</p>
+                    <p><strong>Dialect:</strong> {{ task.english_dialect.replace('_', ' ')|title }}</p>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Cost & Words</h2>
+                <div class="space-y-2 text-sm">
+                    <p><strong>Input Words:</strong> {{ task.input_word_count }}</p>
+                    <p><strong>Output Words:</strong> {{ task.output_word_count }}</p>
+                    <p><strong>Cost:</strong> KSh {{ "%.2f"|format(task.cost) }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h2 class="text-lg font-semibold text-gray-700 mb-2">Output</h2>
+            <div class="relative bg-gray-50 p-4 rounded-lg border">
+                <div id="taskOutput" class="prose max-w-none text-gray-800">
+                    {% if task.humanized_output %}
+                        {{ task.humanized_output|safe }}
+                    {% elif task.download_url %}
+                        <a href="{{ task.download_url }}" class="text-indigo-600 hover:underline">Download Your Document</a>
+                    {% else %}
+                        <p class="text-gray-500">No output available for this task.</p>
+                    {% endif %}
+                </div>
+                {% if task.humanized_output and not task.download_url %}
+                <button id="copyTaskOutputBtn" class="absolute top-2 right-2 p-2 bg-gray-200 text-gray-600 hover:bg-gray-300 rounded-md" title="Copy to clipboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if task.status == 'humanization_failed' and task.error_message %}
+        <div class="mt-6">
+            <h2 class="text-lg font-semibold text-red-700 mb-2">Error Details</h2>
+            <div class="bg-red-50 p-4 rounded-lg border border-red-200 text-red-800 text-sm">
+                {{ task.error_message }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="mt-8 text-center">
+            <a href="{{ url_for('routes.dashboard') }}" class="text-indigo-600 hover:underline">Back to Dashboard</a>
         </div>
     </div>
-</main>
-{% endblock %}
-
-{% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/script.js') }}?v={{ range(1, 10000) | random }}"></script>
-<script>
-    let alertTimeout = null;
-
-    function showAlert(message, type = 'info') {
-        const alertContainer = document.getElementById('js-alert-container');
-        const alertMessage = document.getElementById('js-alert-message');
-        
-        if (!alertContainer || !alertMessage) return;
-
-        if (alertTimeout) {
-            clearTimeout(alertTimeout);
-        }
-
-        const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
-        alertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
-        
-        alertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
-        alertContainer.classList.add(`flash-${type}`, 'show');
-
-        alertTimeout = setTimeout(() => {
-            alertContainer.classList.remove('show');
-        }, 5000);
-    }
-
-    function copyToClipboard(elementId) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        const textarea = document.createElement('textarea');
-        textarea.value = element.innerText;
-        document.body.appendChild(textarea);
-        textarea.select();
-        
-        try {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(textarea.value).then(() => {
-                    showAlert('Copied to clipboard!', 'success');
-                }).catch(err => {
-                    showAlert('Failed to copy text.', 'danger');
-                });
-            } else {
-                document.execCommand('copy');
-                showAlert('Copied to clipboard!', 'success');
-            }
-        } catch (err) {
-            showAlert('Failed to copy text.', 'danger');
-        }
-        
-        document.body.removeChild(textarea);
-    }
-</script>
+</div>
 {% endblock %}
