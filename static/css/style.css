@@ -378,3 +378,7 @@ pre:hover .code-copy-btn {
 #paymentModal.hidden {
     display: none !important;
 }
+
+body {
+    font-family: 'Inter', sans-serif;
+}
