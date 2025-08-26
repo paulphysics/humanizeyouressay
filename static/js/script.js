@@ -14,13 +14,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     //======================================================================
-    //== SHARED LOGIC (REWRITTEN FOR STABILITY)
+    //== SHARED LOGIC
     //======================================================================
     function initializeSharedComponents() {
         const DOMElements = {
-            topUpModal: document.getElementById('topUpModal'),
             topUpBtn: document.getElementById('topUpBtn'),
             mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
+            topUpModal: document.getElementById('topUpModal'),
             closeTopUpModalBtn: document.getElementById('closeTopUpModalBtn'),
             submitTopUpBtn: document.getElementById('submitTopUpBtn'),
             walletToggle: document.getElementById('wallet-toggle'),
@@ -30,35 +30,13 @@ document.addEventListener('DOMContentLoaded', () => {
             mobileMenu: document.getElementById('mobile-menu')
         };
 
-        // --- MODAL FIX: Direct and Simplified Logic ---
-        const openTopUpModal = () => {
-            if (DOMElements.topUpModal) DOMElements.topUpModal.classList.remove('hidden');
-        };
-
-        const closeTopUpModal = () => {
-            if (DOMElements.topUpModal) DOMElements.topUpModal.classList.add('hidden');
-        };
-
-        // 1. Force the modal to be hidden on page load.
-        closeTopUpModal();
-
-        // 2. Attach event listeners directly.
-        if (DOMElements.topUpBtn) DOMElements.topUpBtn.addEventListener('click', openTopUpModal);
-        if (DOMElements.mobileTopUpBtn) DOMElements.mobileTopUpBtn.addEventListener('click', openTopUpModal);
-        if (DOMElements.closeTopUpModalBtn) DOMElements.closeTopUpModalBtn.addEventListener('click', closeTopUpModal);
-        
-        // 3. Add listener to close modal when clicking the background.
+        // ✅ **THE FIX IS HERE** ✅
+        // This line ensures the modal is always hidden when the page loads.
         if (DOMElements.topUpModal) {
-            DOMElements.topUpModal.addEventListener('click', (e) => {
-                if (e.target === DOMElements.topUpModal) {
-                    closeTopUpModal();
-                }
-            });
+            DOMElements.topUpModal.classList.add('hidden');
         }
-        // --- END OF MODAL FIX ---
 
         const showAlert = (message, type = 'info') => {
-            // This function remains unchanged
             let alertTimeout = null;
             if (alertTimeout) clearTimeout(alertTimeout);
             const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
@@ -72,14 +50,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        const UI = {
+            openTopUpModal: () => DOMElements.topUpModal?.classList.remove('hidden'),
+            closeTopUpModal: () => DOMElements.topUpModal?.classList.add('hidden'),
+            toggleMobileMenu: () => DOMElements.mobileMenu?.classList.toggle('hidden')
+        };
+
         const Actions = {
-            // This object remains unchanged
             submitTopUp: async () => {
                 const amount = document.getElementById('top_up_amount').value;
                 const phone = document.getElementById('phone_number_top_up').value.trim();
                 if (!amount || amount <= 0) return showAlert('Please enter a valid amount.', 'danger');
                 if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return showAlert('Invalid phone number.', 'danger');
-                closeTopUpModal();
+                UI.closeTopUpModal();
                 showAlert('Sending top-up request...', 'info');
                 try {
                     const response = await fetch('/wallet/topup', {
@@ -104,21 +87,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 walletBalanceAmount.classList.toggle('text-green-600', !isHidden);
                 walletBalanceAmount.classList.toggle('text-gray-500', isHidden);
                 walletBalanceAmount.textContent = isHidden ? 'KSh ***' : `KSh ${walletBalanceAmount.dataset.balance}`;
-            },
-            toggleMobileMenu: () => {
-                if (DOMElements.mobileMenu) DOMElements.mobileMenu.classList.toggle('hidden');
             }
         };
 
-        // Attach remaining event listeners
+        if (DOMElements.topUpBtn) DOMElements.topUpBtn.addEventListener('click', UI.openTopUpModal);
+        if (DOMElements.mobileTopUpBtn) DOMElements.mobileTopUpBtn.addEventListener('click', UI.openTopUpModal);
+        if (DOMElements.closeTopUpModalBtn) DOMElements.closeTopUpModalBtn.addEventListener('click', UI.closeTopUpModal);
         if (DOMElements.submitTopUpBtn) DOMElements.submitTopUpBtn.addEventListener('click', Actions.submitTopUp);
         if (DOMElements.walletToggle) DOMElements.walletToggle.addEventListener('click', Actions.toggleWalletBalance);
-        if (DOMElements.hamburgerBtn) DOMElements.hamburgerBtn.addEventListener('click', Actions.toggleMobileMenu);
+        if (DOMElements.hamburgerBtn) DOMElements.hamburgerBtn.addEventListener('click', UI.toggleMobileMenu);
+        window.addEventListener('click', (e) => {
+            if (e.target === DOMElements.topUpModal) UI.closeTopUpModal();
+        });
     }
 
     //======================================================================
-    //== PLAYGROUND AND HUMANIZER LOGIC (UNCHANGED)
-    //== The rest of the file remains exactly the same as you provided.
+    //== PLAYGROUND LOGIC
     //======================================================================
     function initializePlayground() {
         let alertTimeout = null;
@@ -516,12 +500,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return { messageContainer, messageBubble };
         };
 
+        // +++ START OF MODIFIED CODE +++
         const loadConversation = async (convId) => {
             try {
                 const response = await fetch(`/conversation/${convId}`);
                 if (!response.ok) throw new Error('Failed to load conversation.');
                
-                const data = await response.json();
+                const data = await response.json(); // Get the whole data object
                 const messages = data.messages;
                 const model_key = data.model_key;
 
@@ -529,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                
                 DOMElements.conversationIdInput.value = convId;
 
+                // Set the model selector based on the conversation's model
                 if (DOMElements.modelSelector && model_key) {
                     DOMElements.modelSelector.dataset.selectedValue = model_key;
                     const modelOption = DOMElements.modelSelectorOptions.querySelector(`[data-value="${model_key}"]`);
@@ -575,6 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showAlert(error.message, 'danger');
             }
         };
+        // +++ END OF MODIFIED CODE +++
 
         const deleteConversation = async (convId) => {
             if (!confirm('Are you sure you want to delete this chat?')) return;
@@ -650,7 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 titleSpan.textContent = conv.title;
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'text-gray-400 hover:text-red-500 p-1';
-                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-ท.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
+                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
                 convItem.append(titleSpan, deleteBtn);
                 titleSpan.onclick = () => loadConversation(conv.id);
                 deleteBtn.onclick = (e) => { e.stopPropagation(); deleteConversation(conv.id); };
@@ -803,6 +790,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setupModelSelector();
     }
 
+
+    //======================================================================
+    //== HUMANIZER LOGIC
+    //======================================================================
     function initializeHumanizer() {
         const AppState = {
             isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
@@ -1153,4 +1144,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-});
+})
