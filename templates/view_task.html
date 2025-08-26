@@ -34,6 +34,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/script.js') }}?v={{ range(1, 10000) | random }}"></script>
 <script>
     let alertTimeout = null;
 
