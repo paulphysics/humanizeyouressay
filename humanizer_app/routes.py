@@ -689,6 +689,10 @@ def download_formatted_doc(transaction_id):
     flash("Failed to generate the document.", "danger")
     return redirect(url_for('main.index'))
 
+from flask import render_template, abort, g, url_for
+from markdown import markdown
+# Ensure other necessary imports like Task, User, logger, etc., are present
+
 @main_bp.route("/task/details/<transaction_id>")
 @auth_required
 def view_task_details(transaction_id):
@@ -698,6 +702,25 @@ def view_task_details(transaction_id):
     if not user.is_admin and (task.user_id != user.id):
         logger.warning(f"User {user.id} attempting to access unauthorized task {task.id}.")
         abort(403)
+
+    # ✅ FIX: Fetch all necessary data for the template header
+    wallet_balance = user.wallet.balance if user.wallet else 0
+    username = user.name
+    
+    # Prepare other variables needed by the template
+    html_output = markdown(task.humanized_output) if task.humanized_output else ""
+    back_url = url_for('main.transaction_history')
+    humanizer_mode = task.humanizer_mode.replace('_', ' ').title() if task.humanizer_mode else "N/A"
+
+    return render_template(
+        "view_task.html", 
+        task=task, 
+        username=username, 
+        html_output=html_output, 
+        back_url=back_url, 
+        humanizer_mode=humanizer_mode,
+        wallet_balance=wallet_balance  # ✅ FIX: Pass the wallet balance to the template
+    )
 
     diff_data = task.diff_data or {}
     output_format = diff_data.get('output_format', 'plain_text')
