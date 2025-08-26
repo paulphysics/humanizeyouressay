@@ -366,3 +366,15 @@ pre:hover .code-copy-btn {
     --tw-text-opacity: 1;
     color: rgb(79 70 229 / var(--tw-text-opacity, 1));
 }
+
+/* ==========================================================================
+   MODAL VISIBILITY FIX
+   ========================================================================== */
+
+/* This rule ensures that when the 'hidden' class is present on a modal,
+   it is always hidden, overriding any other display properties. */
+
+#topUpModal.hidden,
+#paymentModal.hidden {
+    display: none !important;
+}
