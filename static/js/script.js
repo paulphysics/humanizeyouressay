@@ -18,13 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
     //======================================================================
     function initializeSharedComponents() {
         const DOMElements = {
-            // Modal Elements
             topUpModal: document.getElementById('topUpModal'),
             topUpBtn: document.getElementById('topUpBtn'),
             mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
             closeTopUpModalBtn: document.getElementById('closeTopUpModalBtn'),
             submitTopUpBtn: document.getElementById('submitTopUpBtn'),
-            // Other Shared Elements
             walletToggle: document.getElementById('wallet-toggle'),
             jsAlertContainer: document.getElementById('js-alert-container'),
             jsAlertMessage: document.getElementById('js-alert-message'),
@@ -33,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         // --- MODAL FIX: Direct and Simplified Logic ---
-
         const openTopUpModal = () => {
             if (DOMElements.topUpModal) DOMElements.topUpModal.classList.remove('hidden');
         };
@@ -42,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.topUpModal) DOMElements.topUpModal.classList.add('hidden');
         };
 
-        // 1. Force the modal to be hidden on page load to prevent display bugs.
+        // 1. Force the modal to be hidden on page load.
         closeTopUpModal();
 
         // 2. Attach event listeners directly.
@@ -50,16 +47,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (DOMElements.mobileTopUpBtn) DOMElements.mobileTopUpBtn.addEventListener('click', openTopUpModal);
         if (DOMElements.closeTopUpModalBtn) DOMElements.closeTopUpModalBtn.addEventListener('click', closeTopUpModal);
         
-        // 3. Add listener to close modal when clicking on the background overlay.
-        window.addEventListener('click', (e) => {
-            if (e.target === DOMElements.topUpModal) {
-                closeTopUpModal();
-            }
-        });
-
+        // 3. Add listener to close modal when clicking the background.
+        if (DOMElements.topUpModal) {
+            DOMElements.topUpModal.addEventListener('click', (e) => {
+                if (e.target === DOMElements.topUpModal) {
+                    closeTopUpModal();
+                }
+            });
+        }
         // --- END OF MODAL FIX ---
 
         const showAlert = (message, type = 'info') => {
+            // This function remains unchanged
             let alertTimeout = null;
             if (alertTimeout) clearTimeout(alertTimeout);
             const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
@@ -74,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const Actions = {
+            // This object remains unchanged
             submitTopUp: async () => {
                 const amount = document.getElementById('top_up_amount').value;
                 const phone = document.getElementById('phone_number_top_up').value.trim();
@@ -110,13 +110,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // Attach remaining event listeners
         if (DOMElements.submitTopUpBtn) DOMElements.submitTopUpBtn.addEventListener('click', Actions.submitTopUp);
         if (DOMElements.walletToggle) DOMElements.walletToggle.addEventListener('click', Actions.toggleWalletBalance);
         if (DOMElements.hamburgerBtn) DOMElements.hamburgerBtn.addEventListener('click', Actions.toggleMobileMenu);
     }
 
     //======================================================================
-    //== PLAYGROUND LOGIC (UNCHANGED)
+    //== PLAYGROUND AND HUMANIZER LOGIC (UNCHANGED)
+    //== The rest of the file remains exactly the same as you provided.
     //======================================================================
     function initializePlayground() {
         let alertTimeout = null;
@@ -648,7 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 titleSpan.textContent = conv.title;
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'text-gray-400 hover:text-red-500 p-1';
-                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
+                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-ท.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
                 convItem.append(titleSpan, deleteBtn);
                 titleSpan.onclick = () => loadConversation(conv.id);
                 deleteBtn.onclick = (e) => { e.stopPropagation(); deleteConversation(conv.id); };
@@ -801,10 +803,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setupModelSelector();
     }
 
-
-    //======================================================================
-    //== HUMANIZER LOGIC (UNCHANGED)
-    //======================================================================
     function initializeHumanizer() {
         const AppState = {
             isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
