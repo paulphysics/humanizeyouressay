@@ -39,15 +39,16 @@ def create_app():
     dotenv.load_dotenv()
 
     # --- Model configuration ---
-    MODELS = {
-        "gemini-2.5-pro": {
+    """
+    "gemini-2.5-pro": {
             # --- FINAL CORRECTED API ID ---
             "api_id": "gemini-2.5-pro",
             # ------------------------------
             "price_per_word": 0.015,
             "label": "Gemini 2.5 Pro",
-            "disabled": True
-        },
+        }
+    """
+    MODELS = {
         "gpt-5": {
             "api_id": "gpt-5-2025-08-07",
             "price_per_word": 0.012,
