@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeHumanizer();
     }
 
+    const isTaskViewPage = document.getElementById('task-view-container');
+    if (isTaskViewPage) {
+        initializeTaskView();
+    }
+
     //======================================================================
     //== SHARED LOGIC (REWRITTEN FOR STABILITY)
     //======================================================================
@@ -164,32 +169,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
                 .replace(/\n/g, '<br>');
         }
-       
+        
         const highlightCodeBlocks = () => {
            if (typeof hljs === 'undefined') {
                console.warn('highlight.js not loaded, skipping syntax highlighting.');
                return;
            }
-       
+        
            document.querySelectorAll('#chat-log pre').forEach((preElement) => {
                const block = preElement.querySelector('code');
                if (!block) return;
-       
+        
                if (!block.hasAttribute('data-highlighted')) {
                    hljs.highlightElement(block);
                    block.setAttribute('data-highlighted', 'true');
                }
-       
+        
                if (!preElement.querySelector('.code-copy-btn')) {
                    const copyBtn = document.createElement('button');
                    copyBtn.className = 'code-copy-btn';
                    copyBtn.title = 'Copy code';
-       
+        
                    const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
                    const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-       
+        
                    copyBtn.innerHTML = clipboardIcon;
-       
+        
                    copyBtn.addEventListener('click', () => {
                        navigator.clipboard.writeText(block.innerText).then(() => {
                            copyBtn.innerHTML = checkIcon;
@@ -200,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
                            console.error('Failed to copy text: ', err);
                        });
                    });
-       
+        
                    preElement.prepend(copyBtn);
                }
            });
@@ -220,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const showProcessing = (isProcessing) => {
             if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
         };
-       
+        
         const toggleHistorySidebar = () => {
             if (DOMElements.historySidebar && sidebarOverlay) {
                 DOMElements.historySidebar.classList.toggle('mobile-hidden');
@@ -249,19 +254,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     const response = await fetch(`/get_playground_task_status/${taskId}`);
                     if (!response.ok) {
                         if (response.status !== 404 || attempts > 5) {
-                           throw new Error("Failed to get task status from server.");
+                            throw new Error("Failed to get task status from server.");
                         }
                         return;
                     }
-                   
+                    
                     const data = await response.json();
                     if (data.status === 'complete') {
                         clearInterval(pollingInterval);
-                       
+                        
                         typeResponse(messageContainer, messageBubble, data.response);
 
                         showProcessing(false);
-                       
+                        
                         if (data.conversation_title) {
                             const convItem = DOMElements.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
                             if (convItem) {
@@ -282,12 +287,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }, 1000);
         };
-       
+        
         const handleGenerate = async () => {
             if (!DOMElements.promptInput) return;
             const prompt = DOMElements.promptInput.value.trim();
             if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
-           
+            
             const currentConversationId = DOMElements.conversationIdInput.value;
 
             if (!currentConversationId && DOMElements.modelSelectionBar) {
@@ -311,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
             }
             addMessageToLog('user', displayMessage);
-           
+            
             DOMElements.promptInput.value = '';
             DOMElements.promptInput.dispatchEvent(new Event('input'));
             attachedFiles = [];
@@ -377,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
         };
-       
+        
         const showUploadSpinner = () => {
             const dropZone = DOMElements.dropZone;
             if (dropZone) {
@@ -427,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ];
                 const allowedDocExtensions = ['pdf', 'docx', 'txt', 'zip'];
                 const fileExt = file.name.split('.').pop().toLowerCase();
-               
+                
                 let fileData = { name: file.name, type: file.type, size: file.size, data: null };
 
                 if (allowedImageTypes.includes(file.type)) {
@@ -482,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
             actionsContainer.append(copyBtn, humanizeBtn);
             messageContainer.appendChild(actionsContainer);
         };
-       
+        
         const addMessageToLog = (sender, content, addActions = false) => {
             if (!DOMElements.chatLog) return;
             const isUser = sender === 'user';
@@ -490,14 +495,14 @@ document.addEventListener('DOMContentLoaded', () => {
             messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
             const messageBubble = document.createElement('div');
             messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-           
+            
             messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
             messageContainer.appendChild(messageBubble);
 
             if (!isUser && addActions) {
                 addMessageActions(messageContainer, content);
             }
-           
+            
             DOMElements.chatLog.appendChild(messageContainer);
             highlightCodeBlocks();
             DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
@@ -508,13 +513,13 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/conversation/${convId}`);
                 if (!response.ok) throw new Error('Failed to load conversation.');
-               
+                
                 const data = await response.json();
                 const messages = data.messages;
                 const model_key = data.model_key;
 
                 if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
-               
+                
                 DOMElements.conversationIdInput.value = convId;
 
                 if (DOMElements.modelSelector && model_key) {
@@ -526,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         modelOption.classList.add('bg-gray-200');
                     }
                 }
-               
+                
                 if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
 
                 messages.forEach(msg => {
@@ -555,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
                 }
                 document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.toggle('bg-gray-200', div.dataset.convId == convId));
-               
+                
                 highlightCodeBlocks();
 
                 if (window.innerWidth < 1024) toggleHistorySidebar();
@@ -646,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.conversationList.appendChild(convItem);
             });
         };
-       
+        
         const fetchConversations = async (query = '', page = 1) => {
             if (isFetchingHistory) return;
             isFetchingHistory = true;
@@ -668,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const startNewChat = () => {
             clearInterval(pollingInterval);
             if (DOMElements.conversationIdInput) DOMElements.conversationIdInput.value = '';
-           
+            
             attachedFiles = [];
             renderAttachedFiles();
             if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
@@ -677,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  DOMElements.promptInput.dispatchEvent(new Event('input'));
             }
             if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
-           
+            
             addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false);
 
             isChatActive = false;
@@ -686,7 +691,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
             document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
         };
-       
+        
         const setupModelSelector = async () => {
             if (!DOMElements.modelSelector) {
                 console.warn("Model selector element not found.");
@@ -747,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (button && button.dataset.page && !button.disabled) fetchConversations(DOMElements.searchHistoryInput.value, parseInt(button.dataset.page));
             };
         }
-       
+        
         if (DOMElements.promptInput && DOMElements.generateBtn && DOMElements.wordCountDisplay) {
             DOMElements.wordCountDisplay.style.display = 'none';
 
@@ -801,12 +806,12 @@ document.addEventListener('DOMContentLoaded', () => {
             transactionId: null,
             pollingRetries: 0
         };
-       
+        
         const WORDS_PER_UNIT = window.FLASK_WORDS_PER_UNIT || 275;
         const PRICE_PER_UNIT = window.FLASK_PRICE_PER_UNIT || 49;
         const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 49;
         const FORMAT_ONLY_PRICE_PER_UNIT = window.FLASK_FORMAT_ONLY_PRICE_PER_UNIT || 19;
-       
+        
         const MIN_WORDS = 275;
         const MAX_WORDS = 1925;
         const POLLING_RATE = 1000;
@@ -873,7 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.currentIndex = 0;
             }
         };
-       
+        
         function copyToClipboard(elementId) {
             const element = document.getElementById(elementId);
             if (!element) return;
@@ -895,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!DOMElements.inputText) return;
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
                 const humanizerMode = document.querySelector('input[name="humanizer_mode"]:checked')?.value || 'standard';
-               
+                
                 let currentPrice;
                 if (humanizerMode === 'essay') {
                     currentPrice = ESSAY_PRICE_PER_UNIT;
@@ -904,7 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     currentPrice = PRICE_PER_UNIT;
                 }
-               
+                
                 const cost = (words / WORDS_PER_UNIT) * currentPrice;
                 if (DOMElements.wordCountDisplay) DOMElements.wordCountDisplay.textContent = words;
                 if (DOMElements.estimatedCostDisplay) DOMElements.estimatedCostDisplay.textContent = `KSh ${cost.toFixed(2)}`;
@@ -1030,12 +1035,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     UI.hideProcessing();
                 }
             },
-           
+            
             checkStatus: async () => {
                 if (!AppState.transactionId) return;
                 try {
                     const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
-                   
+                    
                     if (!response.ok) {
                         if (response.status === 404) {
                             AppState.pollingRetries++;
@@ -1047,9 +1052,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         throw new Error('Server returned an error.');
                     }
-                   
+                    
                     AppState.pollingRetries = 0;
-                   
+                    
                     const data = await response.json();
 
                     if (data.status === 'complete' || data.status === 'download_ready') {
@@ -1095,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 display.textContent = radio.nextElementSibling.textContent;
                 button.classList.remove('placeholder');
                 popup.classList.add('hidden');
-                // ✅ FIX 5: This call restores the dynamic rules for the toolbar
+                // ✅ THIS IS THE FIX for the dynamic toolbar
                 UI.updateFormattingOptions();
                 UI.updateWordCountAndCost();
 
@@ -1118,7 +1123,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.onclick = () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
             if (DOMElements.submitPaymentBtn) DOMElements.submitPaymentBtn.onclick = Actions.submitHumanization;
             if (DOMElements.closeMpesaModalBtn) DOMElements.closeMpesaModalBtn.onclick = UI.closeAnonymousPaymentModal;
-           
+            
             if (DOMElements.toggleReferencesBtn && DOMElements.referencesSection) {
                 DOMElements.toggleReferencesBtn.addEventListener('click', function (event) {
                     event.preventDefault();
@@ -1129,7 +1134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
             setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
             setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
-           
+            
             document.body.addEventListener('click', (e) => {
                 if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
             });
@@ -1141,6 +1146,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 UI.updateWordCountAndCost();
                 localStorage.removeItem('textToHumanize');
             }
+        }
+    }
+
+    function initializeTaskView() {
+        const copyBtn = document.getElementById('copyTaskOutputBtn');
+        const taskOutput = document.getElementById('taskOutput');
+        const jsAlertContainer = document.getElementById('js-alert-container');
+        const jsAlertMessage = document.getElementById('js-alert-message');
+        let alertTimeout = null;
+
+        const showAlert = (message, type = 'info') => {
+            if (alertTimeout) clearTimeout(alertTimeout);
+            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
+            if (jsAlertMessage) jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
+            if (jsAlertContainer) {
+                jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
+                jsAlertContainer.classList.add(`flash-${type}`, 'show');
+            }
+            alertTimeout = setTimeout(() => jsAlertContainer?.classList.remove('show'), 5000);
+        };
+
+        if (copyBtn && taskOutput) {
+            copyBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(taskOutput.innerText)
+                    .then(() => {
+                        showAlert('Copied to clipboard!', 'success');
+                    })
+                    .catch(err => {
+                        showAlert('Failed to copy text.', 'danger');
+                        console.error('Failed to copy text: ', err);
+                    });
+            });
         }
     }
 });
