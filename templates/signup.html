@@ -7,13 +7,13 @@
         window.firebaseConfig = {{ firebase_config | tojson }};
     </script>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4">
+<body class="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
 
     <div class="w-full max-w-md text-left mb-4">
         <a href="{{ url_for('main.index') }}" class="text-indigo-600 hover:underline font-semibold">← Back to Home</a>
     </div>
 
-    <div class="container card p-8 w-full max-w-md">
+    <div class="container bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">🍸Create Your Account</h1>
 
         <p id="success-message" class="text-green-600 bg-green-100 p-3 rounded-lg text-center mb-4" style="display: none;"></p>
@@ -43,25 +43,25 @@
                 <p id="password-error-message" class="text-red-500 text-sm mt-1"></p>
             </div>
 
-            <!-- START: Referral Code Input -->
             <div>
                 <label for="referral-code-input" class="block text-lg font-medium text-gray-700">Referral Code (Optional):</label>
                 <input type="text" id="referral-code-input" name="referral-code" placeholder="Enter code from a friend" class="w-full p-3 border border-gray-300 rounded-lg">
             </div>
-            <!-- END: Referral Code Input -->
 
-            <button id="create-account-btn" class="btn w-full bg-gray-400 cursor-not-allowed" disabled>Create Account</button>
+            <!-- ✅ FIX: Replaced 'btn' with standard Tailwind classes -->
+            <button id="create-account-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out bg-gray-400 cursor-not-allowed" disabled>Create Account</button>
 
             <div class="relative my-4">
-              <div class="absolute inset-0 flex items-center">
-                <div class="w-full border-t border-gray-300"></div>
-              </div>
-              <div class="relative flex justify-center text-sm">
-                <span class="px-2 bg-white text-gray-500">Or sign up with</span>
-              </div>
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-gray-300"></div>
+                </div>
+                <div class="relative flex justify-center text-sm">
+                    <span class="px-2 bg-white text-gray-500">Or sign up with</span>
+                </div>
             </div>
 
-            <button id="sign-up-with-google-btn" class="btn w-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 flex items-center justify-center">
+            <!-- ✅ FIX: Replaced 'btn' with standard Tailwind classes -->
+            <button id="sign-up-with-google-btn" class="w-full text-gray-700 font-bold py-3 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center transition duration-300 ease-in-out">
                 <svg class="w-5 h-5 mr-3" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
                     <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
