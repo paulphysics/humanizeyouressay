@@ -241,3 +241,12 @@ pre:hover .code-copy-btn { opacity: 1; }
 #paymentModal.hidden {
     display: none !important;
 }
+
+.btn-green {
+    background-color: #22c55e !important; /* The specific green you requested */
+    color: white !important;
+}
+
+.btn-green:hover {
+    background-color: #16a34a !important; /* A slightly darker shade for hover */
+}
