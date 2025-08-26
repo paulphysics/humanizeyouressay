@@ -699,19 +699,44 @@ def view_task_details(transaction_id):
     logger.info(f"--- Entering view_task_details for transaction_id: {transaction_id} ---")
     task = Task.query.filter_by(external_reference=transaction_id).first_or_404()
     user = User.query.get_or_404(session['user']['uid'])
+
     if not user.is_admin and (task.user_id != user.id):
         logger.warning(f"User {user.id} attempting to access unauthorized task {task.id}.")
         abort(403)
 
-    # ✅ FIX: Fetch all necessary data for the template header
+    # --- Start of Fix ---
+
+    # Fetch all necessary data for the template header and page
     wallet_balance = user.wallet.balance if user.wallet else 0
     username = user.name
-    
-    # Prepare other variables needed by the template
-    html_output = markdown(task.humanized_output) if task.humanized_output else ""
     back_url = url_for('main.transaction_history')
-    humanizer_mode = task.humanizer_mode.replace('_', ' ').title() if task.humanizer_mode else "N/A"
+    diff_data = task.diff_data or {}
+    output_format = diff_data.get('output_format', 'plain_text')
+    humanizer_mode = diff_data.get('humanizer_mode', 'N/A').replace('_', ' ').title()
 
+    # Handle tasks that are not yet complete
+    if task.status != 'humanization_complete':
+        flash("This task is not yet complete.", "danger")
+        return redirect(request.referrer or url_for('main.transaction_history'))
+
+    # Handle formatted documents by redirecting to download
+    if output_format != 'plain_text':
+        return redirect(url_for('main.download_formatted_doc', transaction_id=task.external_reference))
+
+    # Prepare the HTML output for plain text tasks
+    html_output = "Error: Could not render task output."
+    try:
+        if task.humanized_output:
+            # Use markdown to render the output safely
+            html_output = markdown(task.humanized_output)
+        else:
+            html_output = "Error: No output data found for this task."
+    except Exception as e:
+        logger.error(f"FATAL: Could not render HTML for task {transaction_id}. Error: {e}", exc_info=True)
+        flash("An unexpected error occurred while trying to display this task.", "danger")
+        return redirect(request.referrer or url_for('main.transaction_history'))
+
+    # Render the final template with all the required data
     return render_template(
         "view_task.html", 
         task=task, 
@@ -719,58 +744,8 @@ def view_task_details(transaction_id):
         html_output=html_output, 
         back_url=back_url, 
         humanizer_mode=humanizer_mode,
-        wallet_balance=wallet_balance  # ✅ FIX: Pass the wallet balance to the template
+        wallet_balance=wallet_balance
     )
-
-    diff_data = task.diff_data or {}
-    output_format = diff_data.get('output_format', 'plain_text')
-
-    if task.status != 'humanization_complete':
-        flash("This task is not yet complete.", "danger")
-        return redirect(request.referrer or url_for('main.transaction_history'))
-
-    if output_format != 'plain_text':
-        return redirect(url_for('main.download_formatted_doc', transaction_id=task.external_reference))
-
-    html_output = "Error: Could not render task output."
-    try:
-        word_diff = diff_data.get('word_diff')
-        if isinstance(word_diff, list):
-            final_html_parts = []
-            current_paragraph_spans = []
-            for d in word_diff:
-                text_segment = d.get("text", "")
-                css_class = "word-added" if d.get("type") == "added" else "word-equal"
-                parts = text_segment.split("[[PARAGRAPH_BREAK]]")
-                if parts[0].strip():
-                    current_paragraph_spans.append(f'<span class="{css_class}">{parts[0].strip()}</span>')
-                if len(parts) > 1:
-                    for i in range(1, len(parts)):
-                        if current_paragraph_spans:
-                            final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-                        current_paragraph_spans = []
-                        if parts[i].strip():
-                            current_paragraph_spans.append(f'<span class="{css_class}">{parts[i].strip()}</span>')
-            if current_paragraph_spans:
-                final_html_parts.append(f'<p style="text-indent: 0;">{" ".join(current_paragraph_spans)}</p>')
-            html_output = "".join(final_html_parts)
-        elif task.humanized_output:
-            paragraphs = task.humanized_output.split('\n\n')
-            final_paragraphs = [f'<p style="text-indent: 0;">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs]
-            html_output = "".join(final_paragraphs)
-        else:
-            html_output = "Error: No output data found for this task."
-
-    except Exception as e:
-        logger.error(f"FATAL: Could not render HTML for task {transaction_id}. Error: {e}", exc_info=True)
-        flash("An unexpected error occurred while trying to display this task.", "danger")
-        return redirect(request.referrer or url_for('main.transaction_history'))
-
-    username = get_display_name(user)
-    back_url = url_for('main.transaction_history')
-    humanizer_mode = diff_data.get('humanizer_mode', 'N/A').replace('_', ' ').title()
-
-    return render_template("view_task.html", task=task, username=username, html_output=html_output, back_url=back_url, humanizer_mode=humanizer_mode)
 
 @main_bp.route("/instructions")
 def instructions():
