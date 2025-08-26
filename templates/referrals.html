@@ -31,7 +31,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div class="bg-white p-6 rounded-lg shadow-md">
                 <h3 class="text-lg font-semibold text-gray-700">Total Referrals</h3>
-                <p class="text-4xl font-bold text-indigo-600">{{ referred_users|length }}</p>
+                <p class="text-4xl font-bold text-indigo-600">{{ pagination.total if pagination else referred_users|length }}</p>
             </div>
             <div class="bg-white p-6 rounded-lg shadow-md">
                 <h3 class="text-lg font-semibold text-gray-700">Total Earnings</h3>
@@ -63,6 +63,31 @@
             {% else %}
             <p class="text-gray-500">You haven't referred anyone yet. Share your code to get started!</p>
             {% endif %}
+
+            <!-- ✅ FIX: Pagination controls added -->
+            <div class="mt-6">
+                {% if pagination and pagination.pages > 1 %}
+                <nav class="flex justify-center">
+                    <ul class="flex items-center -space-x-px h-8 text-sm">
+                        {% if pagination.has_prev %}
+                        <li><a href="{{ url_for('main.referrals_page', page=pagination.prev_num) }}" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 bg-white border border-e-0 border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700">Prev</a></li>
+                        {% endif %}
+
+                        {% for page_num in pagination.iter_pages() %}
+                            {% if page_num %}
+                                <li><a href="{{ url_for('main.referrals_page', page=page_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight {{ 'text-blue-600 bg-blue-50' if page_num == pagination.page else 'text-gray-500 bg-white' }} border border-gray-300 hover:bg-gray-100 hover:text-gray-700">{{ page_num }}</a></li>
+                            {% else %}
+                                <li><span class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300">...</span></li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if pagination.has_next %}
+                        <li><a href="{{ url_for('main.referrals_page', page=pagination.next_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700">Next</a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
         </div>
     </div>
 </main>
