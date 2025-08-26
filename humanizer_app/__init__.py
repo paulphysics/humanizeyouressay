@@ -37,28 +37,28 @@ def create_app():
 
     # --- Load environment variables ---
     dotenv.load_dotenv()
-    
-# --- Model configuration ---
-MODELS = {
-    "gemini-2.5-pro": {
-        # --- FINAL CORRECTED API ID ---
-        "api_id": "gemini-2.5-pro",
-        # ------------------------------
-        "price_per_word": 0.015,
-        "label": "Gemini 2.5 Pro",
-        "disabled": True  # This line has been added
-    },
-    "gpt-5": {
-        "api_id": "gpt-5-2025-08-07",
-        "price_per_word": 0.012,
-        "label": "ChatGPT 5"
-    },
-    "gpt-4o": {
-        "api_id": "gpt-4o-2024-08-06",
-        "price_per_word": 0.0085,
-        "label": "ChatGPT 4o"
+
+    # --- Model configuration ---
+    MODELS = {
+        "gemini-2.5-pro": {
+            # --- FINAL CORRECTED API ID ---
+            "api_id": "gemini-2.5-pro",
+            # ------------------------------
+            "price_per_word": 0.015,
+            "label": "Gemini 2.5 Pro",
+            "disabled": True
+        },
+        "gpt-5": {
+            "api_id": "gpt-5-2025-08-07",
+            "price_per_word": 0.012,
+            "label": "ChatGPT 5"
+        },
+        "gpt-4o": {
+            "api_id": "gpt-4o-2024-08-06",
+            "price_per_word": 0.0085,
+            "label": "ChatGPT 4o"
+        }
     }
-}
     DEFAULT_MODEL_KEY = "gpt-5"
     app.config["MODELS"] = MODELS
     app.config["DEFAULT_MODEL_KEY"] = DEFAULT_MODEL_KEY
