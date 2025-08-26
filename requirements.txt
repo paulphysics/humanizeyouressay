@@ -21,3 +21,4 @@ googlesearch-python
 requests
 beautifulsoup4
 google-generativeai
+Markdown==3.6
