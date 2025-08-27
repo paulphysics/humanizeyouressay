@@ -24,17 +24,28 @@
                 <h2 class="text-lg font-semibold text-gray-700 mb-2">Task Information</h2>
                 <div class="space-y-2 text-sm">
                     <p><strong>Created At:</strong> {{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
-                    <p><strong>Mode:</strong> {{ task.humanizer_mode|title }}</p>
-                    <p><strong>Format:</strong> {{ task.output_format.replace('_', ' ')|title }}</p>
-                    <p><strong>Dialect:</strong> {{ task.english_dialect.replace('_', ' ')|title }}</p>
+                    <!-- ✅ FIX: Check if attributes exist before displaying them -->
+                    {% if task.humanizer_mode %}
+                        <p><strong>Mode:</strong> {{ task.humanizer_mode|title }}</p>
+                    {% endif %}
+                    {% if task.output_format %}
+                        <p><strong>Format:</strong> {{ task.output_format.replace('_', ' ')|title }}</p>
+                    {% endif %}
+                    {% if task.english_dialect %}
+                        <p><strong>Dialect:</strong> {{ task.english_dialect.replace('_', ' ')|title }}</p>
+                    {% endif %}
                 </div>
             </div>
             <div>
                 <h2 class="text-lg font-semibold text-gray-700 mb-2">Cost & Words</h2>
                 <div class="space-y-2 text-sm">
-                    <p><strong>Input Words:</strong> {{ task.input_word_count }}</p>
-                    <p><strong>Output Words:</strong> {{ task.output_word_count }}</p>
-                    <p><strong>Cost:</strong> KSh {{ "%.2f"|format(task.cost) }}</p>
+                    {% if task.input_word_count %}
+                        <p><strong>Input Words:</strong> {{ task.input_word_count }}</p>
+                    {% endif %}
+                    <p><strong>Output Words:</strong> {{ task.output_word_count or 'N/A' }}</p>
+                    {% if task.cost %}
+                        <p><strong>Cost:</strong> KSh {{ "%.2f"|format(task.cost) }}</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -71,7 +82,7 @@
         {% endif %}
 
         <div class="mt-8 text-center">
-            <a href="{{ url_for('routes.dashboard') }}" class="text-indigo-600 hover:underline">Back to Dashboard</a>
+            <a href="{{ url_for('main.transaction_history') }}" class="text-indigo-600 hover:underline">Back to Transaction History</a>
         </div>
     </div>
 </div>
