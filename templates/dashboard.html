@@ -13,6 +13,20 @@
 {% endblock %}
 
 {% block content %}
+<div id="js-alert-container" class="flash-message rounded-lg shadow-md hidden">
+    <span id="js-alert-message"></span>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="max-w-7xl mx-auto w-full mb-4">
+      {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
 <div class="max-w-7xl mx-auto card p-8 w-full">
     <h1 class="text-2xl font-bold text-center text-gray-500 mb-6">✨Humanize AI Text</h1>
     <p class="text-sm text-center text-gray-600 mb-8">
@@ -27,20 +41,13 @@
 <script type="module" src="{{ url_for('static', filename='js/login-auth.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if there is text from the playground waiting to be pasted
     const textToPaste = localStorage.getItem('textToHumanize');
-
     if (textToPaste) {
-        // Find the textarea (assumed id is 'input_text')
         const humanizerTextarea = document.getElementById('input_text'); 
-        
         if (humanizerTextarea) {
             humanizerTextarea.value = textToPaste;
-            // Optional: Trigger an input event if other elements depend on it
             humanizerTextarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
-
-        // Clean up the storage so it doesn't paste again on the next refresh
         localStorage.removeItem('textToHumanize');
     }
 });
