@@ -276,7 +276,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 /* ✅ UPDATED RULE: Cyan fuzzy glow on focus */
 #input_text:focus,
 #bibtex_input:focus {
-    border-color: #22d3ee !important;
+    border-color: #00ffff !important;
     box-shadow: 0 0 8px 2px rgba(34, 211, 238, 0.5) !important; /* This creates the fuzzy glow */
     outline: none !important;
 }
