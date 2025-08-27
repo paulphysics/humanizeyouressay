@@ -8,13 +8,16 @@
 
     {% include '_header.html' %}
 
-    {% block content %}
-    {% endblock %}
+    <main class="container mx-auto px-4 py-8">
+        {% block content %}
+        {% endblock %}
+    </main>
 
     {% include '_footer.html' %}
     
     {% include '_modals.html' %}
 
     <script src="{{ url_for('static', filename='js/script.js') }}?v={{ range(1, 10000) | random }}"></script>
-    </body>
+    {% block scripts %}{% endblock %}
+</body>
 </html>
