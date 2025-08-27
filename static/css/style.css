@@ -250,3 +250,10 @@ pre:hover .code-copy-btn { opacity: 1; }
 .btn-green:hover {
     background-color: #16a34a !important; /* A slightly darker shade for hover */
 }
+
+/* NEW RULE ADDED AT THE END */
+label.disabled {
+    color: #9ca3af; /* This is a light grey color from Tailwind's palette */
+    pointer-events: none; /* This makes the label unclickable */
+    opacity: 0.6; /* Further reduces the visual prominence */
+}
