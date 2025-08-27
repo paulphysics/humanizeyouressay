@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     {% include '_head.html' %}
+    <!-- ✅ FIX: Add a version number to the CSS link -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.1">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-gray-50 font-sans leading-normal tracking-normal">
