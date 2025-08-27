@@ -280,3 +280,10 @@ pre:hover .code-copy-btn { opacity: 1; }
     box-shadow: 0 0 8px 2px rgba(34, 211, 238, 0.5) !important; /* This creates the fuzzy glow */
     outline: none !important;
 }
+
+/* ✅ FIX: Force the desktop menu to be visible on large screens */
+@media (min-width: 1024px) {
+    #mobile-menu {
+        display: flex !important;
+    }
+}
