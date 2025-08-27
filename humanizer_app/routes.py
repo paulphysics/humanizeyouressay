@@ -804,7 +804,7 @@ def get_conversations():
     user = User.query.get_or_404(session['user']['uid'])
     query = request.args.get('q', '')
     page = request.args.get('page', 1, type=int)
-    per_page = 7
+    per_page = 6
 
     base_query = Conversation.query.filter_by(user_id=user.id)
 
