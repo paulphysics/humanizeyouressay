@@ -1,13 +1,12 @@
 /* static/css/style.css */
 
-/* ✅ FIX: Added the essential .hidden class definition */
 .hidden {
     display: none !important;
 }
 
 /* --- Global Font and Background --- */
 body {
-    font-family: 'Inter', sans-serif !important; /* !important ensures this overrides Tailwind's default */
+    font-family: 'Inter', sans-serif !important;
     background-color: #f0f4f8;
 }
 
@@ -248,13 +247,12 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 
 .btn-green {
-    background-color: #16a34a !important; /* The specific green you requested */
+    background-color: #16a34a !important;
     color: white !important;
 }
 
-
 .btn-green:hover {
-    background-color: #16a34a !important; /* A slightly darker shade for hover */
+    background-color: #16a34a !important;
 }
 
 /* This rule makes disabled labels appear greyed out */
@@ -262,4 +260,13 @@ pre:hover .code-copy-btn { opacity: 1; }
     color: #9ca3af; 
     pointer-events: none;
     opacity: 0.6; 
+}
+
+/* ✅ Forceful color rules for word count and cost */
+#input_word_count_display {
+    color: #4f46e5 !important; /* This is Tailwind's Indigo 600 */
+}
+
+#estimated_cost_display {
+    color: #16a34a !important; /* This is Tailwind's Green 600 */
 }
