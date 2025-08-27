@@ -53,6 +53,9 @@ class Task(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user_id = db.Column(db.String(128), db.ForeignKey('user.id'), nullable=True)
 
+    # ✅ FIX: Added the missing output_format column
+    output_format = db.Column(db.String(50), nullable=True)
+
     user = db.relationship('User', back_populates='tasks')
 
     def __repr__(self):
