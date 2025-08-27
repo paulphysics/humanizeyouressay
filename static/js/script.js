@@ -816,7 +816,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const MAX_WORDS = 1925;
         const POLLING_RATE = 1000;
         const ALERT_DURATION = 5000;
-
+    
         const DOMElements = {
             humanizeForm: document.getElementById('humanizeForm'),
             inputText: document.getElementById('input_text'),
@@ -852,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
             toggleReferencesBtn: document.getElementById('toggleReferencesBtn'),
             referencesSection: document.getElementById('references_section'),
         };
-
+    
         const typeAnimation = {
             element: DOMElements.typingText,
             text: "Your output/download link will appear here. Tasks that fail Turnitin's AI detection are eligible for refunds for any words that were not successfully humanized.",
@@ -884,7 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!element) return;
             navigator.clipboard.writeText(element.innerText).then(() => UI.showAlert('Copied!', 'success'));
         }
-
+    
         const UI = {
             showAlert: (message, type = 'info') => {
                 if (AppState.alertTimeout) clearTimeout(AppState.alertTimeout);
@@ -983,14 +983,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             
+                // This is the corrected logic for the references button
                 const isDocx = selectedFormat && selectedFormat.value !== 'plain_text';
-                DOMElements.toggleReferencesBtn?.classList.toggle('hidden', !isDocx);
-                if (!isDocx) DOMElements.referencesSection?.classList.add('hidden');
+                if (DOMElements.toggleReferencesBtn) {
+                    DOMElements.toggleReferencesBtn.classList.toggle('hidden', !isDocx);
+                }
+                if (!isDocx && DOMElements.referencesSection) {
+                     DOMElements.referencesSection.classList.add('hidden');
+                }
             },
             resetSelections: () => {
                 if (DOMElements.inputText) DOMElements.inputText.value = '';
                 if (DOMElements.bibtexInput) DOMElements.bibtexInput.value = '';
+    
+                // This ensures the references section and button are hidden by default
                 if (DOMElements.referencesSection) DOMElements.referencesSection.classList.add('hidden');
+                if (DOMElements.toggleReferencesBtn) DOMElements.toggleReferencesBtn.classList.add('hidden');
+    
                 if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = '';
                 if (DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = '0';
                 if (DOMElements.copyBtn) DOMElements.copyBtn.style.display = 'none';
@@ -1031,17 +1040,17 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             closeAnonymousPaymentModal: () => DOMElements.paymentModal?.classList.add('hidden'),
         };
-
+    
         const Actions = {
             submitHumanization: async () => {
                 const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
                 const selectedFormat = document.querySelector('input[name="output_format"]:checked');
                 const selectedDialect = document.querySelector('input[name="english_dialect"]:checked');
-
+    
                 if (!selectedMode || !selectedFormat || !selectedDialect) {
                     return UI.showAlert('Please select a Mode, Format, and Dialect before proceeding.', 'danger');
                 }
-
+    
                 const formData = new FormData(DOMElements.humanizeForm);
                 const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
                 if (words < MIN_WORDS) return UI.showAlert(`Input must be at least ${MIN_WORDS} words.`, 'danger');
@@ -1084,7 +1093,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     AppState.pollingRetries = 0;
                     
                     const data = await response.json();
-
+    
                     if (data.status === 'complete' || data.status === 'download_ready') {
                         Actions.stopPolling();
                         UI.renderOutput(data);
@@ -1103,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     UI.showAlert(error.message || 'Error checking status.', 'danger');
                 }
             },
-
+    
             startPolling: () => {
                 if (AppState.isPolling) return;
                 AppState.pollingRetries = 0;
@@ -1116,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 UI.hideProcessing();
             },
         };
-
+    
         const setupPopup = (button, popup, display, radios) => {
             if (!button || !popup || !display || !radios) return;
             button.addEventListener('click', (e) => {
@@ -1128,10 +1137,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 display.textContent = radio.nextElementSibling.textContent;
                 button.classList.remove('placeholder');
                 popup.classList.add('hidden');
-                // ✅ This is where the magic happens
+                
                 UI.updateFormattingOptions();
                 UI.updateWordCountAndCost();
-
+    
                 if (radio.name === 'humanizer_mode') {
                     if (radio.value === 'document_formatter') {
                         DOMElements.humanizeBtn.textContent = 'Process';
@@ -1141,10 +1150,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }));
         };
-
+    
         if (DOMElements.humanizeForm) {
             if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false;
-
+    
             DOMElements.inputText.oninput = UI.updateWordCountAndCost;
             if (DOMElements.copyBtn) DOMElements.copyBtn.onclick = () => copyToClipboard('humanized_output_display');
             if (DOMElements.resetBtn) DOMElements.resetBtn.onclick = UI.resetSelections;
@@ -1158,7 +1167,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     DOMElements.referencesSection.classList.toggle('hidden');
                 });
             }
-
+    
             setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
             setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
             setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
@@ -1166,7 +1175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.addEventListener('click', (e) => {
                 if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
             });
-
+    
             UI.resetSelections();
             const textToHumanize = localStorage.getItem('textToHumanize');
             if (textToHumanize) {
