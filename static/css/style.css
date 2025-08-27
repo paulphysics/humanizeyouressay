@@ -287,3 +287,10 @@ pre:hover .code-copy-btn { opacity: 1; }
         display: flex !important;
     }
 }
+
+/* ✅ FIX: Add fallback and necessary properties for gradient text */
+.bg-clip-text {
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: #8b5cf6; /* Fallback purple color */
+}
