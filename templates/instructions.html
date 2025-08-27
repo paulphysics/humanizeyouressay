@@ -1,140 +1,129 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>User Guide & Instructions</title>
-    {% include '_head.html' %}
-</head>
-<body class="flex flex-col items-center min-h-screen px-4 bg-gray-50">
+{% extends "layout.html" %}
 
-    {% include '_header.html' %}
+{% block title %}User Guide & Instructions{% endblock %}
 
-    <div class="max-w-5xl mx-auto card p-8 w-full">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">💡 User Guide & Instructions</h1>
-        <p class="text-center text-gray-600 mb-12">Follow these steps and guidelines to get the best results from our tool.</p>
-        
-        <div class="space-y-12">
-
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">▶️ Step 1: Watch the Video Guide</h2>
-                <p class="text-gray-700 leading-relaxed mb-4">
-                    For a quick overview of how to use the tool, watch our video guide below. It covers all the essential features and provides helpful tips.
-                </p>
-                <div class="aspect-w-16 aspect-h-9">
-                    <iframe 
-                        src="https://www.youtube.com/embed/YOUR_VIDEO_ID_HERE" 
-                        frameborder="0" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen
-                        class="w-full h-full rounded-lg shadow-lg"
-                    ></iframe>
-                </div>
-            </div>
-
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">✅ Step 2: How to Format Your Input Text</h2>
-                <p class="text-gray-700 leading-relaxed mb-4">
-                    When using the Essay mode, properly formatting your input text is the most crucial step for achieving a high-quality result. The tool relies on specific cues to understand the structure of your document.
-                </p>
-                <div class="bg-gray-100 p-4 rounded-lg mt-4">
-                    <h3 class="font-semibold text-lg mb-2">Headings & Subheadings: Use Markdown</h3>
-                    <p class="text-gray-700 leading-relaxed mb-3">
-                        To define headings, use the Markdown syntax. This is the most reliable method.
-                    </p>
-                    <ul class="list-disc list-inside space-y-2 pl-4">
-                        <li>Title will be generated automatically.</li>
-                        <li>`# My Main Headings` for a Level 1 Heading.</li>
-                        <li>`## My Subheading` for a Level 2 Heading.</li>
-                        <li>`### A Deeper Section` for a Level 3 Heading.</li>
-                    </ul>
-                     <p class="text-gray-700 leading-relaxed mt-3">
-                        The tool also has fallbacks for text without Markdown: it will likely identify a line as a heading if it is in <strong>Title Case</strong> or has <strong>fewer than 7 words</strong> (and does not end in punctuation). However, using Markdown is strongly recommended for accuracy.
-                    </p>
-                </div>
-            </div>
-
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">🤖 Step 3: A Deep Dive into Tool Modes</h2>
-                <p class="text-gray-700 leading-relaxed mb-4">
-                    Each mode uses a different set of instructions for the system. Choose the one that best fits your goal.
-                </p>
-                
-                <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md mb-6" role="alert">
-                    <p class="font-bold">Default Settings</p>
-                    <p>Note: While you are free to select any options from the control bar, we recommend you process your text using the following settings: <strong>Standard</strong> mode, <strong>Plain Text</strong> format.</p>
-                </div>
-
-                <ul class="list-disc list-inside space-y-4 pl-4">
-                    <li><strong class="font-semibold">Standard:</strong> This mode is focused on synonym replacement and rephrasing. It is designed to make AI text sound more natural while strictly adhering to the original word count. This mode can only be used with the "Plain Text" output format.</li>
-                    <li><strong class="font-semibold">Essay (Beta):</strong> This is the most powerful mode for academic writing and requires a `.docx` output format (APA, MLA, or Harvard). It performs a multi-step process:
-                        <ul class="list-decimal list-inside space-y-2 pl-6 mt-2">
-                            <li><strong>Automatic Title:</strong> No need to add a title. It will be done for you, but you can edit it later if you don't like the provided one.</li>
-                            <li><strong>Reference Formatting:</strong> It formats the references you provide into your chosen academic style.</li>
-                            <li><strong>Contextual In-text Citations:</strong> It rewrites your body paragraphs to integrate relevant citations naturally.</li>
-                             <li><strong>Source Relevance:</strong> Make sure the sources you provide are closely related to your essay's topic. Otherwise, they will appear in the reference list but won't be used as in-text citations.</li>
-                             <li><strong>Beta:</strong> This is a beta feature, so users only pay for the humanization, not the addition of in-text citations or formatting of the references. Essentially, this part of the service is provided at no additional cost above humanisation charges.</li>
-                        </ul>
-                    </li>
-                    <li><strong class="font-semibold">Formatting Only (No Humanization):</strong> This mode <strong>does not rewrite your content</strong>. It is a utility for quickly formatting a paper and requires a `.docx` output format. It will perform the following actions:
-                        <ul class="list-decimal list-inside space-y-2 pl-6 mt-2">
-                            <li>Correct the spelling of your text to match your chosen dialect (e.g., US or UK English).</li>
-                            <li>Generate and add a properly formatted title page.</li>
-                            <li>Format your provided references and add them to a "Works Cited" or "References" page.</li>
-                            <li>Add page numbers and headers according to your chosen style (APA 7, MLA 9, or Harvard).</li>
-                        </ul>
-                    </li>
-                     <li><strong class="font-semibold">AI Playground:</strong> This is an interactive chat environment where you can experiment with various AI models. It's a great space to brainstorm ideas, get writing assistance, or explore the capabilities of AI. Your conversations are saved for future reference.</li>
-                </ul>
-            </div>
-
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">📄 Step 4: Getting Your Output</h2>
-                <p class="text-gray-700 leading-relaxed">
-                    Once processing is complete, you will receive your document in one of two ways:
-                </p>
-                 <ul class="list-disc list-inside space-y-3 pl-4">
-                    <li><strong class="font-semibold">Plain Text:</strong> The output appears directly on the page. Words that were changed from the original are highlighted in <span class="text-green-600 font-semibold">green</span>. This allows you to easily review the changes.</li>
-                    <li><strong class="font-semibold">.docx Format:</strong> A download link will appear. Your document will be professionally formatted and ready for review.</li>
-                </ul>
-            </div>
-        </div>
-        
-        <hr class="my-12">
+{% block content %}
+<div class="max-w-5xl mx-auto card p-8 w-full">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">💡 User Guide & Instructions</h1>
+    <p class="text-center text-gray-600 mb-12">Follow these steps and guidelines to get the best results from our tool.</p>
+    
+    <div class="space-y-12">
 
         <div>
-            <h2 class="text-2xl font-bold text-center text-red-700 mb-6">Important Disclaimers & Terms of Use</h2>
-            <p class="text-center text-gray-600 mb-8">This application is a powerful assistant, but it is not a substitute for human critical thinking and review. By using this service, you acknowledge and agree to the following terms:</p>
-            <div class="space-y-4 text-gray-700">
-                <div class="bg-red-100 border-l-4 border-red-500 p-4 rounded-md">
-                    <strong class="font-semibold block">1. This Is a Tool, Not a Replacement for Human Intuition:</strong>
-                    <p>This service is designed to simplify and accelerate the writing and formatting process. It is not intended to replace the critical judgment, contextual understanding, and intellectual work of a human writer. The final product is your responsibility.</p>
-                </div>
-                <div class="bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-md">
-                    <strong class="font-semibold block">2. Do Not Expect Perfection:</strong>
-                    <p>While we strive for high accuracy, the system is not infallible. We estimate the tool to be around <strong>90% accurate</strong>. Users should anticipate the need for a final proofreading pass to catch potential errors in grammar, phrasing, or citation placement.</p>
-                </div>
-                <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
-                    <strong class="font-semibold block">3. The User Is Responsible for Final Submission:</strong>
-                    <p>You are ultimately responsible for the work you submit. Always review the generated document thoroughly to ensure it meets your standards and the requirements of your institution or publication. We are not liable for any academic or professional consequences resulting from the use of this tool.</p>
-                </div>
-                 <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
-                    <strong class="font-semibold block">4. Contextual and Factual Accuracy:</strong>
-                    <p>The tool may not fully grasp the nuanced context of your arguments and may occasionally misinterpret text or place citations in a way that is grammatically correct but contextually awkward. It is your responsibility to verify all facts, claims, and the relevance of every citation.</p>
-                </div>
-                 <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
-                    <strong class="font-semibold block">5. Formatting and Citation Standards:</strong>
-                    <p>The tool makes a best effort to adhere to standard APA, MLA, and Harvard guidelines. However, your professor or institution may have specific variations on these styles. Always double-check the generated document against your specific formatting requirements.</p>
-                </div>
-                <div class="bg-green-100 border-l-4 border-green-500 p-4 rounded-md">
-                    <strong class="font-semibold block">6. Refund Policy:</strong>
-                    <p>Our service's effectiveness is benchmarked against the <strong>Turnitin AI detector</strong>. Therefore, any and all refund requests will be evaluated based on the AI detection results from Turnitin, and <strong>only Turnitin</strong>. If a refund is deemed appropriate, it will be issued as credits back to your in-app wallet, up to a maximum of 100% of the original cost. Refunds will only be processed for users with active accounts.</p>
-                </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">▶️ Step 1: Watch the Video Guide</h2>
+            <p class="text-gray-700 leading-relaxed mb-4">
+                For a quick overview of how to use the tool, watch our video guide below. It covers all the essential features and provides helpful tips.
+            </p>
+            <div class="aspect-w-16 aspect-h-9">
+                <iframe 
+                    src="https://www.youtube.com/embed/YOUR_VIDEO_ID_HERE" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen
+                    class="w-full h-full rounded-lg shadow-lg"
+                ></iframe>
+            </div>
+        </div>
+
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">✅ Step 2: How to Format Your Input Text</h2>
+            <p class="text-gray-700 leading-relaxed mb-4">
+                When using the Essay mode, properly formatting your input text is the most crucial step for achieving a high-quality result. The tool relies on specific cues to understand the structure of your document.
+            </p>
+            <div class="bg-gray-100 p-4 rounded-lg mt-4">
+                <h3 class="font-semibold text-lg mb-2">Headings & Subheadings: Use Markdown</h3>
+                <p class="text-gray-700 leading-relaxed mb-3">
+                    To define headings, use the Markdown syntax. This is the most reliable method.
+                </p>
+                <ul class="list-disc list-inside space-y-2 pl-4">
+                    <li>Title will be generated automatically.</li>
+                    <li>`# My Main Headings` for a Level 1 Heading.</li>
+                    <li>`## My Subheading` for a Level 2 Heading.</li>
+                    <li>`### A Deeper Section` for a Level 3 Heading.</li>
+                </ul>
+                 <p class="text-gray-700 leading-relaxed mt-3">
+                    The tool also has fallbacks for text without Markdown: it will likely identify a line as a heading if it is in <strong>Title Case</strong> or has <strong>fewer than 7 words</strong> (and does not end in punctuation). However, using Markdown is strongly recommended for accuracy.
+                </p>
+            </div>
+        </div>
+
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🤖 Step 3: A Deep Dive into Tool Modes</h2>
+            <p class="text-gray-700 leading-relaxed mb-4">
+                Each mode uses a different set of instructions for the system. Choose the one that best fits your goal.
+            </p>
+            
+            <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md mb-6" role="alert">
+                <p class="font-bold">Default Settings</p>
+                <p>Note: While you are free to select any options from the control bar, we recommend you process your text using the following settings: <strong>Standard</strong> mode, <strong>Plain Text</strong> format.</p>
+            </div>
+
+            <ul class="list-disc list-inside space-y-4 pl-4">
+                <li><strong class="font-semibold">Standard:</strong> This mode is focused on synonym replacement and rephrasing. It is designed to make AI text sound more natural while strictly adhering to the original word count. This mode can only be used with the "Plain Text" output format.</li>
+                <li><strong class="font-semibold">Essay (Beta):</strong> This is the most powerful mode for academic writing and requires a `.docx` output format (APA, MLA, or Harvard). It performs a multi-step process:
+                    <ul class="list-decimal list-inside space-y-2 pl-6 mt-2">
+                        <li><strong>Automatic Title:</strong> No need to add a title. It will be done for you, but you can edit it later if you don't like the provided one.</li>
+                        <li><strong>Reference Formatting:</strong> It formats the references you provide into your chosen academic style.</li>
+                        <li><strong>Contextual In-text Citations:</strong> It rewrites your body paragraphs to integrate relevant citations naturally.</li>
+                         <li><strong>Source Relevance:</strong> Make sure the sources you provide are closely related to your essay's topic. Otherwise, they will appear in the reference list but won't be used as in-text citations.</li>
+                         <li><strong>Beta:</strong> This is a beta feature, so users only pay for the humanization, not the addition of in-text citations or formatting of the references. Essentially, this part of the service is provided at no additional cost above humanisation charges.</li>
+                    </ul>
+                </li>
+                <li><strong class="font-semibold">Formatting Only (No Humanization):</strong> This mode <strong>does not rewrite your content</strong>. It is a utility for quickly formatting a paper and requires a `.docx` output format. It will perform the following actions:
+                    <ul class="list-decimal list-inside space-y-2 pl-6 mt-2">
+                        <li>Correct the spelling of your text to match your chosen dialect (e.g., US or UK English).</li>
+                        <li>Generate and add a properly formatted title page.</li>
+                        <li>Format your provided references and add them to a "Works Cited" or "References" page.</li>
+                        <li>Add page numbers and headers according to your chosen style (APA 7, MLA 9, or Harvard).</li>
+                    </ul>
+                </li>
+                 <li><strong class="font-semibold">AI Playground:</strong> This is an interactive chat environment where you can experiment with various AI models. It's a great space to brainstorm ideas, get writing assistance, or explore the capabilities of AI. Your conversations are saved for future reference.</li>
+            </ul>
+        </div>
+
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">📄 Step 4: Getting Your Output</h2>
+            <p class="text-gray-700 leading-relaxed">
+                Once processing is complete, you will receive your document in one of two ways:
+            </p>
+             <ul class="list-disc list-inside space-y-3 pl-4">
+                <li><strong class="font-semibold">Plain Text:</strong> The output appears directly on the page. Words that were changed from the original are highlighted in <span class="text-green-600 font-semibold">green</span>. This allows you to easily review the changes.</li>
+                <li><strong class="font-semibold">.docx Format:</strong> A download link will appear. Your document will be professionally formatted and ready for review.</li>
+            </ul>
+        </div>
+    </div>
+    
+    <hr class="my-12">
+
+    <div>
+        <h2 class="text-2xl font-bold text-center text-red-700 mb-6">Important Disclaimers & Terms of Use</h2>
+        <p class="text-center text-gray-600 mb-8">This application is a powerful assistant, but it is not a substitute for human critical thinking and review. By using this service, you acknowledge and agree to the following terms:</p>
+        <div class="space-y-4 text-gray-700">
+            <div class="bg-red-100 border-l-4 border-red-500 p-4 rounded-md">
+                <strong class="font-semibold block">1. This Is a Tool, Not a Replacement for Human Intuition:</strong>
+                <p>This service is designed to simplify and accelerate the writing and formatting process. It is not intended to replace the critical judgment, contextual understanding, and intellectual work of a human writer. The final product is your responsibility.</p>
+            </div>
+            <div class="bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-md">
+                <strong class="font-semibold block">2. Do Not Expect Perfection:</strong>
+                <p>While we strive for high accuracy, the system is not infallible. We estimate the tool to be around <strong>90% accurate</strong>. Users should anticipate the need for a final proofreading pass to catch potential errors in grammar, phrasing, or citation placement.</p>
+            </div>
+            <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
+                <strong class="font-semibold block">3. The User Is Responsible for Final Submission:</strong>
+                <p>You are ultimately responsible for the work you submit. Always review the generated document thoroughly to ensure it meets your standards and the requirements of your institution or publication. We are not liable for any academic or professional consequences resulting from the use of this tool.</p>
+            </div>
+             <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
+                <strong class="font-semibold block">4. Contextual and Factual Accuracy:</strong>
+                <p>The tool may not fully grasp the nuanced context of your arguments and may occasionally misinterpret text or place citations in a way that is grammatically correct but contextually awkward. It is your responsibility to verify all facts, claims, and the relevance of every citation.</p>
+            </div>
+             <div class="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-md">
+                <strong class="font-semibold block">5. Formatting and Citation Standards:</strong>
+                <p>The tool makes a best effort to adhere to standard APA, MLA, and Harvard guidelines. However, your professor or institution may have specific variations on these styles. Always double-check the generated document against your specific formatting requirements.</p>
+            </div>
+            <div class="bg-green-100 border-l-4 border-green-500 p-4 rounded-md">
+                <strong class="font-semibold block">6. Refund Policy:</strong>
+                <p>Our service's effectiveness is benchmarked against the <strong>Turnitin AI detector</strong>. Therefore, any and all refund requests will be evaluated based on the AI detection results from Turnitin, and <strong>only Turnitin</strong>. If a refund is deemed appropriate, it will be issued as credits back to your in-app wallet, up to a maximum of 100% of the original cost. Refunds will only be processed for users with active accounts.</p>
             </div>
         </div>
     </div>
-
-    {% include '_modals.html' %}
-    {% include '_footer.html' %}
-
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-</body>
-</html>
+</div>
+{% endblock %}
