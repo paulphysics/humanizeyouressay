@@ -917,18 +917,28 @@ document.addEventListener('DOMContentLoaded', () => {
             updateFormattingOptions: () => {
                 const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
                 const selectedFormat = document.querySelector('input[name="output_format"]:checked');
+            
+                // First, enable all options
                 document.querySelectorAll('input[name="humanizer_mode"], input[name="output_format"]').forEach(radio => {
-                    if (document.querySelector(`label[for="${radio.id}"]`)) {
-                        radio.disabled = false;
-                        document.querySelector(`label[for="${radio.id}"]`).classList.remove('disabled');
+                    const label = document.querySelector(`label[for="${radio.id}"]`);
+                    radio.disabled = false;
+                    if (label) {
+                        label.classList.remove('disabled');
                     }
                 });
+            
+                // Apply rules based on selected mode
                 if (selectedMode) {
                     if (selectedMode.value === 'standard') {
                         document.querySelectorAll('input[name="output_format"]').forEach(radio => {
                             if (['apa_7', 'mla_9', 'harvard'].includes(radio.value)) {
                                 radio.disabled = true;
                                 document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
+                                if (radio.checked) {
+                                    radio.checked = false;
+                                    const formatDisplay = document.getElementById('format_display');
+                                    if(formatDisplay) formatDisplay.textContent = "Format";
+                                }
                             }
                         });
                     } else if (['essay', 'document_formatter'].includes(selectedMode.value)) {
@@ -936,25 +946,43 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (plainTextRadio) {
                             plainTextRadio.disabled = true;
                             document.querySelector('label[for="plain_text_output"]').classList.add('disabled');
+                            if (plainTextRadio.checked) {
+                                plainTextRadio.checked = false;
+                                const formatDisplay = document.getElementById('format_display');
+                                if(formatDisplay) formatDisplay.textContent = "Format";
+                            }
                         }
                     }
                 }
+            
+                // Apply rules based on selected format
                 if (selectedFormat) {
                     if (['apa_7', 'mla_9', 'harvard'].includes(selectedFormat.value)) {
                         const standardRadio = document.querySelector('input[value="standard"]');
                         if (standardRadio) {
                             standardRadio.disabled = true;
                             document.querySelector('label[for="mode_standard"]').classList.add('disabled');
+                            if (standardRadio.checked) {
+                                standardRadio.checked = false;
+                                const modeDisplay = document.getElementById('mode_display');
+                                if(modeDisplay) modeDisplay.textContent = "Mode";
+                            }
                         }
                     } else if (selectedFormat.value === 'plain_text') {
                         document.querySelectorAll('input[name="humanizer_mode"]').forEach(radio => {
                             if (['essay', 'document_formatter'].includes(radio.value)) {
                                 radio.disabled = true;
                                 document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
+                                if (radio.checked) {
+                                    radio.checked = false;
+                                    const modeDisplay = document.getElementById('mode_display');
+                                    if(modeDisplay) modeDisplay.textContent = "Mode";
+                                }
                             }
                         });
                     }
                 }
+            
                 const isDocx = selectedFormat && selectedFormat.value !== 'plain_text';
                 DOMElements.toggleReferencesBtn?.classList.toggle('hidden', !isDocx);
                 if (!isDocx) DOMElements.referencesSection?.classList.add('hidden');
@@ -1100,7 +1128,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 display.textContent = radio.nextElementSibling.textContent;
                 button.classList.remove('placeholder');
                 popup.classList.add('hidden');
-                // ✅ THIS IS THE FIX for the dynamic toolbar
+                // ✅ This is where the magic happens
                 UI.updateFormattingOptions();
                 UI.updateWordCountAndCost();
 
