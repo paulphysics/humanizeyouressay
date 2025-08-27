@@ -262,11 +262,19 @@ pre:hover .code-copy-btn { opacity: 1; }
     opacity: 0.6; 
 }
 
-/* ✅ Forceful color rules for word count and cost */
+/* Forceful color rules for word count and cost */
 #input_word_count_display {
     color: #4f46e5 !important; /* This is Tailwind's Indigo 600 */
 }
 
 #estimated_cost_display {
     color: #16a34a !important; /* This is Tailwind's Green 600 */
+}
+
+/* ✅ NEW RULE: Cyan focus border for text areas */
+#input_text:focus,
+#bibtex_input:focus {
+    border-color: #22d3ee !important; /* A nice cyan color */
+    box-shadow: 0 0 0 2px #22d3ee !important; /* Creates the cyan ring effect */
+    outline: none !important; /* Removes the default browser outline */
 }
