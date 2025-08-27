@@ -257,3 +257,18 @@ label.disabled {
     pointer-events: none; /* This makes the label unclickable */
     opacity: 0.6; /* Further reduces the visual prominence */
 }
+
+/* NEW RULES ADDED AT THE END TO FIX COLOR ISSUES */
+#input_word_count_display {
+    color: #4f46e5 !important; /* This is Tailwind's Indigo 600 */
+}
+
+#estimated_cost_display {
+    color: #16a34a !important; /* This is Tailwind's Green 600 */
+}
+
+label.disabled {
+    color: #9ca3af; 
+    pointer-events: none;
+    opacity: 0.6; 
+}
