@@ -19,8 +19,17 @@
         Sign up for better deals (Ksh 39 per page) and access to more features, for example, ChatGPT 5!
     </p>
 
-    {% include '_humanizer_form.html' %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-4">
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
 
+    {% include '_humanizer_form.html' %}
 </div>
 {% endblock %}
 
