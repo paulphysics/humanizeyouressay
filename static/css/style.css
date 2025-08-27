@@ -30,9 +30,11 @@ body {
 }
 
 /* --- General Element Styles --- */
+/* ✅ FIX: Added transition for the glow effect */
 textarea {
     resize: vertical;
     min-height: 250px;
+    transition: box-shadow 0.3s ease-in-out, border-color 0.3s ease-in-out;
 }
 
 .card {
@@ -264,17 +266,17 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 /* Forceful color rules for word count and cost */
 #input_word_count_display {
-    color: #4f46e5 !important; /* This is Tailwind's Indigo 600 */
+    color: #4f46e5 !important;
 }
 
 #estimated_cost_display {
-    color: #16a34a !important; /* This is Tailwind's Green 600 */
+    color: #16a34a !important;
 }
 
-/* ✅ NEW RULE: Cyan focus border for text areas */
+/* ✅ UPDATED RULE: Cyan fuzzy glow on focus */
 #input_text:focus,
 #bibtex_input:focus {
-    border-color: #22d3ee !important; /* A nice cyan color */
-    box-shadow: 0 0 0 2px #22d3ee !important; /* Creates the cyan ring effect */
-    outline: none !important; /* Removes the default browser outline */
+    border-color: #22d3ee !important;
+    box-shadow: 0 0 8px 2px rgba(34, 211, 238, 0.5) !important; /* This creates the fuzzy glow */
+    outline: none !important;
 }
