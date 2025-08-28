@@ -296,9 +296,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 
 
-/* ✅ FIX: More specific rule to override prose styles and restore green color */
-.prose .word-added,
-#taskOutput .word-added {
+/* ✅ FIX: Ultra-specific rule to override Tailwind's .prose class and restore green color */
+div#taskOutput.prose span.word-added {
     color: #16a34a !important; /* Tailwind's green-600 */
     font-weight: 600 !important;
 }
