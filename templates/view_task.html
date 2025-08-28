@@ -1,126 +1,97 @@
-{% extends "layout.html" %}
+<div class="flex flex-col lg:flex-row gap-6">
 
-{% block title %}Task Details{% endblock %}
+    <div class="w-full lg:w-1/2 flex flex-col">
+        <form id="humanizeForm" class="space-y-4 flex flex-col">
+            <div class="relative border border-gray-300 rounded-lg shadow-sm flex flex-col h-64">
+                <textarea id="input_text" name="input_text" class="block w-full border-0 p-4 pb-16 text-gray-900 placeholder:text-gray-300 focus:ring-0 sm:text-sm sm:leading-6 flex-grow"
+                          placeholder="Paste your text here..."></textarea>
+                
+                <div id="references_section" class="hidden absolute inset-0 p-4 bg-white">
+                    <textarea id="bibtex_input" name="bibtex_input" class="w-full h-full p-4 border border-gray-300 rounded-lg focus:border-indigo-500 shadow-sm sm:text-sm" rows="4" placeholder="Paste references here..."></textarea>
+                </div>
+                
+                <div class="absolute bottom-4 left-4 right-4">
+                    <div class="flex items-center justify-center flex-wrap gap-2">
+                        <div class="flex items-center gap-x-3">
+                            <button type="button" class="popup-trigger cursor-default text-indigo-600" title="Word Count">
+                                <span id="input_word_count_display">0 </span>word(s)
+                            </button>
+                            <p class="popup-trigger cursor-default text-green-600" title="Estimated Cost">
+                                <span id="estimated_cost_display">KSh 0</span>
+                            </p>
+                        </div>
 
-{% block content %}
-<div id="task-view-container" class="max-w-4xl mx-auto">
-    <div class="mb-4">
-        <a href="{{ url_for('main.transaction_history') }}" class="text-sm text-indigo-600 hover:underline">← Back to Transaction History</a>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-lg p-6 sm:p-8">
-        <!-- Header Section -->
-        <div class="flex flex-col sm:flex-row justify-between items-start mb-6 border-b pb-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Task Details</h1>
-                <p class="text-sm text-gray-500 mt-1">Reference: {{ task.external_reference or task.id }}</p>
-            </div>
-            <span class="mt-2 sm:mt-0 px-3 py-1 text-xs sm:text-sm font-semibold rounded-full whitespace-nowrap
-                {% if task.status == 'complete' or task.status == 'download_ready' %} bg-green-100 text-green-800
-                {% elif task.status == 'humanization_failed' %} bg-red-100 text-red-800
-                {% else %} bg-yellow-100 text-yellow-800
-                {% endif %}">
-                {{ task.status.replace('_', ' ')|title }}
-            </span>
-        </div>
-
-        <!-- Task Information Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 mb-6">
-            <div>
-                <h2 class="text-lg font-semibold text-gray-700 mb-3">Task Information</h2>
-                <div class="space-y-3 text-sm">
-                    <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Created At:</strong> <span class="text-gray-800">{{ task.created_at.strftime('%b %d, %Y %H:%M') }}</span></p>
-                    {% if task.humanizer_mode %}
-                        <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Mode:</strong> <span class="text-gray-800">{{ task.humanizer_mode|title }}</span></p>
-                    {% endif %}
-                    {% if task.output_format %}
-                        <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Format:</strong> <span class="text-gray-800">{{ task.output_format.replace('_', ' ')|title }}</span></p>
-                    {% endif %}
-                    {% if task.english_dialect %}
-                        <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Dialect:</strong> <span class="text-gray-800">{{ task.english_dialect.replace('_', ' ')|title }}</span></p>
-                    {% endif %}
+                        <div class="popup-control">
+                             <button type="button" id="modeBtn" class="popup-trigger placeholder" title="Tool Mode">
+                                 <span id="mode_display">Mode</span>
+                             </button>
+                             <div id="modePopup" class="popup-menu hidden">
+                                 <input type="radio" id="mode_standard" name="humanizer_mode" value="standard"><label for="mode_standard">Standard</label>
+                                 <input type="radio" id="mode_essay" name="humanizer_mode" value="essay"><label for="mode_essay">Essay(Beta)</label>
+                                 <input type="radio" id="mode_formatter" name="humanizer_mode" value="document_formatter"><label for="mode_formatter" class="text-red-300">Formatting Only!</label>
+                             </div>
+                        </div>
+                        <div class="popup-control">
+                            <button type="button" id="formatBtn" class="popup-trigger placeholder" title="Output Format">
+                                <span id="format_display">Format</span>
+                            </button>
+                            <div id="formatPopup" class="popup-menu hidden">
+                                <input type="radio" id="plain_text_output" name="output_format" value="plain_text"><label for="plain_text_output">Plain Text</label>
+                                <input type="radio" id="apa7_output" name="output_format" value="apa_7"><label for="apa7_output">APA 7</label>
+                                <input type="radio" id="mla9_output" name="output_format" value="mla_9"><label for="mla9_output">MLA 9</label>
+                                <input type="radio" id="harvard_output" name="output_format" value="harvard"><label for="harvard_output">Harvard</label>
+                            </div>
+                        </div>
+                        <div class="popup-control">
+                            <button type="button" id="dialectBtn" class="popup-trigger placeholder" title="English Dialect">
+                                <span id="dialect_display">Dialect</span>
+                            </button>
+                            <div id="dialectPopup" class="popup-menu hidden">
+                                <input type="radio" id="dialect_us" name="english_dialect" value="us"><label for="dialect_us">US</label>
+                                <input type="radio" id="dialect_uk" name="english_dialect" value="uk"><label for="dialect_uk">UK</label>
+                                <input type="radio" id="dialect_au" name="english_dialect" value="au"><label for="dialect_au">AU</label>
+                                <input type="radio" id="dialect_ca" name="english_dialect" value="ca"><label for="dialect_ca">CA</label>
+                            </div>
+                        </div>
+                        <button type="button" id="toggleReferencesBtn" class="popup-trigger hidden" title="Add References">📚</button>
+                        <button type="button" id="resetBtn" class="popup-trigger" title="Reset Selections">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
-            <div>
-                <h2 class="text-lg font-semibold text-gray-700 mb-3">Cost & Words</h2>
-                <div class="space-y-3 text-sm">
-                    <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Output Words:</strong> <span class="text-gray-800">{{ task.output_word_count or 'N/A' }}</span></p>
-                    {% if task.amount_charged %}
-                        <p class="flex items-center"><strong class="w-24 font-medium text-gray-500">Cost:</strong> <span class="text-gray-800">KSh {{ "%.2f"|format(task.amount_charged) }}</span></p>
-                    {% endif %}
-                </div>
+            
+            <div class="flex items-center justify-center pt-2">
+                <button type="button" id="openPaymentModalBtn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    Humanize
+                </button>
             </div>
-        </div>
-
-        <!-- Output Section -->
-        <div>
-            <h2 class="text-lg font-semibold text-gray-700 mb-2">Output</h2>
-            <div class="bg-gray-50 p-4 rounded-lg border">
-                <div id="taskOutput" class="prose max-w-none text-gray-800 max-h-96 overflow-y-auto">
-                    {% if task.humanized_output %}
-                        {{ task.humanized_output|safe }}
-                    {% elif task.download_url %}
-                        <a href="{{ task.download_url }}" class="text-indigo-600 hover:underline font-semibold">Click here to download your document</a>
-                    {% else %}
-                        <p class="text-gray-500">No output available for this task.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Error Section -->
-        {% if task.status == 'humanization_failed' and task.error_message %}
-        <div class="mt-6">
-            <h2 class="text-lg font-semibold text-red-700 mb-2">Error Details</h2>
-            <div class="bg-red-50 p-4 rounded-lg border border-red-200 text-red-800 text-sm">
-                {{ task.error_message }}
-            </div>
-        </div>
-        {% endif %}
+        </form>
     </div>
 
-    <!-- ✅ FIX: Replaced text button with a green SVG icon button -->
-    {% if task.humanized_output and not task.download_url %}
-    <div class="mt-6 text-center">
-        <button id="copyTaskOutputBtn" class="bg-green-600 text-white p-2 rounded-full hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500" title="Copy Text">
-            <svg id="clipboard-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            <svg id="tick-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-        </button>
+    <div id="humanized_output_section" class="w-full lg:w-1/2 flex flex-col mobile-hidden">
+        <div class="relative w-full border border-gray-300 rounded-lg bg-gray-50 flex flex-col h-64">
+            <div id="output_placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-center text-gray-400 p-4">
+                
+                <div class="typing-container text-sm mt-4">
+                    <span id="typing-text"></span>
+                    <span class="typing-cursor"></span>
+                </div>
+            </div>
+
+            <div id="humanized_output_display" class="humanized-output-text w-full p-4 break-words whitespace-pre-wrap flex-grow overflow-y-auto"></div>
+        </div>
+        
+        <div class="flex justify-between items-center pt-2">
+            <p class="text-sm text-gray-500">Word count: <span id="output_word_count_value">0</span></p>
+            <button id="copyButton" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 transition duration-300" title="Copy Humanized Text">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+            </button>
+        </div>
     </div>
-    {% endif %}
+
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const copyBtn = document.getElementById('copyTaskOutputBtn');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', function() {
-                const taskOutput = document.getElementById('taskOutput');
-                if (taskOutput) {
-                    navigator.clipboard.writeText(taskOutput.innerText).then(() => {
-                        const clipboardIcon = document.getElementById('clipboard-icon');
-                        const tickIcon = document.getElementById('tick-icon');
-                        if (clipboardIcon && tickIcon) {
-                            clipboardIcon.classList.add('hidden');
-                            tickIcon.classList.remove('hidden');
-                            setTimeout(() => {
-                                clipboardIcon.classList.remove('hidden');
-                                tickIcon.classList.add('hidden');
-                            }, 2000);
-                        }
-                    }).catch(err => {
-                        console.error('Failed to copy text: ', err);
-                        alert('Failed to copy text.');
-                    });
-                }
-            });
-        }
-    });
-</script>
-{% endblock %}
