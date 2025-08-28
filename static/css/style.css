@@ -295,8 +295,10 @@ pre:hover .code-copy-btn { opacity: 1; }
     color: #8b5cf6; /* Fallback purple color */
 }
 
+
 /* ✅ FIX: Restore green color for added words inside the output display */
 #humanized_output_display .word-added,
 #taskOutput .word-added {
     color: #16a34a !important; /* Tailwind's green-600 */
     font-weight: 600 !important;
+}
