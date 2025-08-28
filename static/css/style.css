@@ -296,8 +296,8 @@ pre:hover .code-copy-btn { opacity: 1; }
 }
 
 
-/* ✅ FIX: Restore green color for added words inside the output display */
-#humanized_output_display .word-added,
+/* ✅ FIX: More specific rule to override prose styles and restore green color */
+.prose .word-added,
 #taskOutput .word-added {
     color: #16a34a !important; /* Tailwind's green-600 */
     font-weight: 600 !important;
