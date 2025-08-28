@@ -704,8 +704,6 @@ def view_task_details(transaction_id):
         logger.warning(f"User {user.id} attempting to access unauthorized task {task.id}.")
         abort(403)
 
-    # --- Start of Fix ---
-
     # Fetch all necessary data for the template header and page
     wallet_balance = user.wallet.balance if user.wallet else 0
     username = user.name
@@ -716,21 +714,22 @@ def view_task_details(transaction_id):
 
     # Handle tasks that are not yet complete
     if task.status != 'humanization_complete':
-        flash("This task is not yet complete.", "danger")
+        flash("This task is not yet complete.", "info")
         return redirect(request.referrer or url_for('main.transaction_history'))
 
     # Handle formatted documents by redirecting to download
     if output_format != 'plain_text':
         return redirect(url_for('main.download_formatted_doc', transaction_id=task.external_reference))
 
-    # Prepare the HTML output for plain text tasks
-    html_output = "Error: Could not render task output."
+    # ✅ FIX: Prepare the HTML output with proper paragraph formatting
+    html_output = "<p>Error: Could not render task output.</p>"
     try:
         if task.humanized_output:
-            # Use markdown to render the output safely
-            html_output = markdown(task.humanized_output)
+            # This ensures that text separated by blank lines becomes distinct paragraphs
+            paragraphs = task.humanized_output.strip().split('\n\n')
+            html_output = "".join(f"<p>{p.strip()}</p>" for p in paragraphs if p.strip())
         else:
-            html_output = "Error: No output data found for this task."
+            html_output = "<p>Error: No output data found for this task.</p>"
     except Exception as e:
         logger.error(f"FATAL: Could not render HTML for task {transaction_id}. Error: {e}", exc_info=True)
         flash("An unexpected error occurred while trying to display this task.", "danger")
