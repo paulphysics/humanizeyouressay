@@ -13,7 +13,7 @@
  *
  * Notes:
  * - This file intentionally mirrors the original functions / endpoints so
- *   behavior remains unchanged.
+ * behavior remains unchanged.
  * - A global `window.App.showAlert` is exposed for other code to call.
  */
 
@@ -166,10 +166,21 @@
         }
       });
     }
+    
+    function applyCssFixes() {
+        const style = document.createElement('style');
+        style.textContent = `
+            #js-alert-container.show {
+                display: block !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     // Public API
     return {
       init: function () {
+        applyCssFixes();
         initTopUpAndNav();
       },
       showAlert,
@@ -855,7 +866,7 @@
   // Humanizer module
   // -------------------------
   const Humanizer = (function (Shared) {
-    const { qs, on } = Shared.utils;
+    const { qs, qsa, on } = Shared.utils;
     const ROOT = qs("#humanizeForm");
     if (!ROOT) return { init: function () { /* not on page */ } };
 
@@ -1170,8 +1181,11 @@
       if (!button || !popup || !display || !radios) return;
       on(button, "click", (e) => {
         e.stopPropagation();
-        qsa(".popup-menu").forEach(p => { if (p !== popup) p.classList.add("hidden"); });
-        popup.classList.toggle("hidden");
+        const isHidden = popup.classList.contains("hidden");
+        qsa(".popup-menu").forEach(p => p.classList.add("hidden"));
+        if (isHidden) {
+            popup.classList.remove("hidden");
+        }
       });
       radios.forEach(radio => on(radio, "change", () => {
         display.textContent = radio.nextElementSibling.textContent;
@@ -1259,4 +1273,3 @@
   });
 
 })();
-
