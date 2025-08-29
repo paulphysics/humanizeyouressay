@@ -14,7 +14,7 @@ def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
-            return redirect(url_for('auth.login'))
+            return redirect(url_for('auth.auth_page'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -86,8 +86,8 @@ def authorize():
 
 # --- Public Routes for Auth Pages ---
 
-@auth_bp.route('/login')
-def login():
+@auth_bp.route('/auth/page')
+def auth_page():
     if 'user' in session:
         return redirect(url_for('main.home'))
     
@@ -100,26 +100,18 @@ def login():
         "appId": os.getenv("FIREBASE_APP_ID"),
         "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
     }
-    return render_template('login.html', firebase_config=firebase_config)
+    return render_template('auth.html', firebase_config=firebase_config)
+
+@auth_bp.route('/login')
+def login():
+    return redirect(url_for('auth.auth_page'))
 
 @auth_bp.route('/signup')
 def signup():
-    if 'user' in session:
-        return redirect(url_for('main.home'))
-        
-    firebase_config = {
-        "apiKey": os.getenv("FIREBASE_API_KEY"),
-        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-        "projectId": os.getenv("FIREBASE_PROJECT_ID"),
-        "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-        "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
-        "appId": os.getenv("FIREBASE_APP_ID"),
-        "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
-    }
-    return render_template('signup.html', firebase_config=firebase_config)
+    return redirect(url_for('auth.auth_page'))
 
 
 @auth_bp.route('/logout')
 def logout():
     session.pop('user', None)
-    return redirect(url_for('auth.login'))
+    return redirect(url_for('auth.auth_page'))
