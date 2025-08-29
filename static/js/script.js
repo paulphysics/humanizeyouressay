@@ -166,15 +166,15 @@
         }
       });
     }
-    
+
     function applyCssFixes() {
-        const style = document.createElement('style');
-        style.textContent = `
+      const style = document.createElement('style');
+      style.textContent = `
             #js-alert-container.show {
                 display: block !important;
             }
         `;
-        document.head.appendChild(style);
+      document.head.appendChild(style);
     }
 
     // Public API
@@ -806,12 +806,20 @@
 
       if (DOM.promptInput && DOM.generateBtn && DOM.wordCountDisplay) {
         DOM.wordCountDisplay.style.display = "none";
+        // ✅ FIX: Hide send button by default
+        DOM.generateBtn.style.display = "none";
+
         on(DOM.promptInput, "input", () => {
           const trimmedValue = (DOM.promptInput.value || "").trim();
           const words = trimmedValue ? trimmedValue.split(/\s+/).filter(Boolean) : [];
           const wordCount = words.length;
+
+          // ✅ FIX: Show button only when there is text
+          DOM.generateBtn.style.display = trimmedValue ? 'inline-flex' : 'none';
+
           DOM.wordCountDisplay.style.display = trimmedValue ? "block" : "none";
           DOM.wordCountDisplay.textContent = `${wordCount} / 1000 words`;
+
           if (wordCount > 1000) {
             DOM.wordCountDisplay.classList.add("text-red-500");
             DOM.generateBtn.disabled = true;
@@ -1184,7 +1192,7 @@
         const isHidden = popup.classList.contains("hidden");
         qsa(".popup-menu").forEach(p => p.classList.add("hidden"));
         if (isHidden) {
-            popup.classList.remove("hidden");
+          popup.classList.remove("hidden");
         }
       });
       radios.forEach(radio => on(radio, "change", () => {
