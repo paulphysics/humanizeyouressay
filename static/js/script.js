@@ -1,1220 +1,699 @@
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * static/js/script.js
+ * ------------------------------------------------------------
+ * Refactored to a modular, maintainable architecture using
+ * the Revealing Module Pattern. Each page-specific feature
+ * lives in its own module, while site-wide UI and utilities
+ * live in SharedComponents.
+ *
+ * Drop-in replacement: no external build tools required.
+ * Safe to include with a plain <script src="/static/js/script.js"></script>
+ *
+ * Modules:
+ *   - SharedComponents: sitewide utilities (alerts, modals, fetch helpers)
+ *   - Playground: logic for playground.html
+ *   - Humanizer: logic for the humanizer form page
+ *   - TaskView: logic for view_task.html
+ *
+ * Conditional initialization:
+ *   - Each module self-guards and only runs when its root
+ *     container is found in the DOM (e.g., #playground-container).
+ *
+ * Global API:
+ *   - window.App.showAlert(type, message, {timeout})
+ *     Types: "success" | "info" | "warning" | "error"
+ * ------------------------------------------------------------
+ */
 
-    // --- INITIALIZATION LOGIC ---
-    initializeSharedComponents();
+(function () {
+  "use strict";
 
-    const isPlaygroundPage = document.getElementById('playground-container');
-    if (isPlaygroundPage) {
-        initializePlayground();
-    }
+  // ----------------------------------------------------------
+  // SharedComponents (Site-wide)
+  // ----------------------------------------------------------
+  const SharedComponents = (function () {
+    // ------- Private state -------
+    const SELECTORS = {
+      alertRegion: "#global-alerts", // Optional container; created if missing
+      modalOpenBtn: "[data-modal-target]",
+      modalCloseBtn: "[data-modal-close]",
+      modal: "[data-modal]"
+    };
 
-    const isHumanizerPage = document.getElementById('humanizeForm');
-    if (isHumanizerPage) {
-        initializeHumanizer();
-    }
+    // Cache created alert region
+    let alertRegionEl = null;
 
-    const isTaskViewPage = document.getElementById('task-view-container');
-    if (isTaskViewPage) {
-        initializeTaskView();
-    }
+    // ------- Utilities -------
+    const qs = (sel, root = document) => root.querySelector(sel);
+    const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-    //======================================================================
-    //== SHARED LOGIC (REWRITTEN FOR STABILITY)
-    //======================================================================
-    function initializeSharedComponents() {
-        const DOMElements = {
-            topUpModal: document.getElementById('topUpModal'),
-            topUpBtn: document.getElementById('topUpBtn'),
-            mobileTopUpBtn: document.getElementById('mobileTopUpBtn'),
-            closeTopUpModalBtn: document.getElementById('closeTopUpModalBtn'),
-            submitTopUpBtn: document.getElementById('submitTopUpBtn'),
-            walletToggle: document.getElementById('wallet-toggle'),
-            jsAlertContainer: document.getElementById('js-alert-container'),
-            jsAlertMessage: document.getElementById('js-alert-message'),
-            hamburgerBtn: document.getElementById('menu-btn'),
-            mobileMenu: document.getElementById('mobile-menu')
-        };
+    const on = (el, event, handler, opts) => el && el.addEventListener(event, handler, opts || false);
+    const delegate = (root, event, selector, handler) => {
+      if (!root) return;
+      root.addEventListener(event, (e) => {
+        const target = e.target.closest(selector);
+        if (target && root.contains(target)) handler(e, target);
+      });
+    };
 
-        const openTopUpModal = () => {
-            if (DOMElements.topUpModal) DOMElements.topUpModal.classList.remove('hidden');
-        };
+    const debounce = (fn, delay = 300) => {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(null, args), delay);
+      };
+    };
 
-        const closeTopUpModal = () => {
-            if (DOMElements.topUpModal) DOMElements.topUpModal.classList.add('hidden');
-        };
+    const throttle = (fn, limit = 200) => {
+      let inThrottle = false;
+      return (...args) => {
+        if (inThrottle) return;
+        inThrottle = true;
+        fn.apply(null, args);
+        setTimeout(() => (inThrottle = false), limit);
+      };
+    };
 
-        closeTopUpModal();
+    const uuid = () =>
+      "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0,
+          v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
 
-        if (DOMElements.topUpBtn) DOMElements.topUpBtn.addEventListener('click', openTopUpModal);
-        if (DOMElements.mobileTopUpBtn) DOMElements.mobileTopUpBtn.addEventListener('click', openTopUpModal);
-        if (DOMElements.closeTopUpModalBtn) DOMElements.closeTopUpModalBtn.addEventListener('click', closeTopUpModal);
-        
-        if (DOMElements.topUpModal) {
-            DOMElements.topUpModal.addEventListener('click', (e) => {
-                if (e.target === DOMElements.topUpModal) {
-                    closeTopUpModal();
-                }
-            });
+    // CSRF: works with either <meta name="csrf-token"> or hidden input in forms
+    const getCSRFToken = () => {
+      const meta = qs('meta[name="csrf-token"]');
+      if (meta && meta.content) return meta.content;
+      const input = qs('input[name="csrf_token"]');
+      return input ? input.value : null;
+    };
+
+    const serializeForm = (form) => {
+      const data = new FormData(form);
+      // Preserve action attribute; caller decides endpoint
+      return data;
+    };
+
+    const jsonFetch = async (url, { method = "GET", data = null, headers = {}, signal } = {}) => {
+      const csrf = getCSRFToken();
+      const finalHeaders = Object.assign(
+        { "Accept": "application/json" },
+        csrf ? { "X-CSRFToken": csrf } : {},
+        headers
+      );
+
+      let body;
+      if (data && !(data instanceof FormData)) {
+        finalHeaders["Content-Type"] = "application/json";
+        body = JSON.stringify(data);
+      } else {
+        // Let browser set correct multipart/form-data boundary if FormData
+        body = data || undefined;
+      }
+
+      const res = await fetch(url, { method, headers: finalHeaders, body, signal, credentials: "same-origin" });
+      const contentType = res.headers.get("Content-Type") || "";
+      const isJSON = contentType.includes("application/json");
+
+      if (!res.ok) {
+        let errPayload = {};
+        try {
+          errPayload = isJSON ? await res.json() : { detail: await res.text() };
+        } catch (_) {
+          // ignore parse error
         }
+        const err = new Error(errPayload.message || errPayload.error || res.statusText || "Request failed");
+        err.status = res.status;
+        err.payload = errPayload;
+        throw err;
+      }
 
-        const showAlert = (message, type = 'info') => {
-            let alertTimeout = null;
-            if (alertTimeout) clearTimeout(alertTimeout);
-            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
-            if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
-            if (DOMElements.jsAlertContainer) {
-                DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
-                DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
-            }
-            if (type !== 'info') {
-                alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), 5000);
-            }
-        };
+      return isJSON ? res.json() : res.text();
+    };
 
-        const Actions = {
-            submitTopUp: async () => {
-                const amount = document.getElementById('top_up_amount').value;
-                const phone = document.getElementById('phone_number_top_up').value.trim();
-                if (!amount || amount <= 0) return showAlert('Please enter a valid amount.', 'danger');
-                if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return showAlert('Invalid phone number.', 'danger');
-                closeTopUpModal();
-                showAlert('Sending top-up request...', 'info');
-                try {
-                    const response = await fetch('/wallet/topup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ amount: parseFloat(amount), phone_number: phone })
-                    });
-                    const data = await response.json();
-                    if (!response.ok) throw new Error(data.error || 'An error occurred.');
-                    showAlert('STK push sent. Please check your phone to complete payment.', 'success');
-                } catch (error) {
-                    showAlert(error.message, 'danger');
-                }
-            },
-            toggleWalletBalance: () => {
-                const walletIcon = document.getElementById('wallet-icon');
-                const walletBalanceAmount = document.getElementById('wallet-balance-amount');
-                if (!DOMElements.walletToggle || !walletIcon || !walletBalanceAmount) return;
-                const isHidden = DOMElements.walletToggle.classList.toggle('balance-hidden');
-                walletIcon.classList.toggle('text-gray-500', !isHidden);
-                walletIcon.classList.toggle('text-green-600', isHidden);
-                walletBalanceAmount.classList.toggle('text-green-600', !isHidden);
-                walletBalanceAmount.classList.toggle('text-gray-500', isHidden);
-                walletBalanceAmount.textContent = isHidden ? 'KSh ***' : `KSh ${walletBalanceAmount.dataset.balance}`;
-            },
-            toggleMobileMenu: () => {
-                if (DOMElements.mobileMenu) DOMElements.mobileMenu.classList.toggle('hidden');
-            }
-        };
+    // ------- Alert System -------
+    const ensureAlertRegion = () => {
+      if (alertRegionEl && document.body.contains(alertRegionEl)) return alertRegionEl;
 
-        if (DOMElements.submitTopUpBtn) DOMElements.submitTopUpBtn.addEventListener('click', Actions.submitTopUp);
-        if (DOMElements.walletToggle) DOMElements.walletToggle.addEventListener('click', Actions.toggleWalletBalance);
-        if (DOMElements.hamburgerBtn) DOMElements.hamburgerBtn.addEventListener('click', Actions.toggleMobileMenu);
-    }
+      alertRegionEl = qs(SELECTORS.alertRegion);
+      if (!alertRegionEl) {
+        alertRegionEl = document.createElement("div");
+        alertRegionEl.id = SELECTORS.alertRegion.replace("#", "");
+        alertRegionEl.setAttribute("role", "region");
+        alertRegionEl.setAttribute("aria-label", "Notifications");
+        alertRegionEl.style.position = "fixed";
+        alertRegionEl.style.top = "1rem";
+        alertRegionEl.style.right = "1rem";
+        alertRegionEl.style.zIndex = "2147483647";
+        alertRegionEl.style.display = "flex";
+        alertRegionEl.style.flexDirection = "column";
+        alertRegionEl.style.gap = "0.5rem";
+        document.body.appendChild(alertRegionEl);
+      }
+      return alertRegionEl;
+    };
 
-    function initializePlayground() {
-        let alertTimeout = null;
-        const ALERT_DURATION = 5000;
-        let isFetchingHistory = false;
-        let isChatActive = false;
-        let attachedFiles = [];
-        const MAX_TOTAL_SIZE = 10 * 1024 * 1024;
-        let pollingInterval = null;
+    const showAlert = (type, message, { timeout = 5000 } = {}) => {
+      const region = ensureAlertRegion();
+      const id = `alert-${uuid()}`;
 
-        const DOMElements = {
-            modelSelectionBar: document.getElementById('model-selection-bar'),
-            uploadBtn: document.getElementById('upload-btn'),
-            fileInput: document.getElementById('file-input'),
-            attachmentPreviewContainer: document.getElementById('attachment-preview-container'),
-            chatLog: document.getElementById('chat-log'),
-            promptInput: document.getElementById('prompt-input'),
-            generateBtn: document.getElementById('generate-btn'),
-            newChatBtn: document.getElementById('new-chat-btn'),
-            conversationList: document.getElementById('conversation-list'),
-            modelSelector: document.getElementById('model-selector'),
-            modelSelectorBtn: document.getElementById('model-selector-btn'),
-            modelSelectorOptions: document.getElementById('model-selector-options'),
-            modelSelectorLabel: document.getElementById('model-selector-label'),
-            jsAlertContainer: document.getElementById('js-alert-container'),
-            jsAlertMessage: document.getElementById('js-alert-message'),
-            historySidebar: document.getElementById('history-sidebar'),
-            showHistoryBtn: document.getElementById('show-history-btn'),
-            searchHistoryInput: document.getElementById('search-history-input'),
-            paginationContainer: document.getElementById('history-pagination-container'),
-            historyLoadingSpinner: document.getElementById('history-loading-spinner'),
-            playgroundWelcomeHeader: document.getElementById('playground-welcome-header'),
-            playgroundContainer: document.getElementById('playground-container'),
-            dropZone: document.getElementById('drop-zone'),
-            conversationIdInput: document.getElementById('conversation-id-storage'),
-            clearHistoryBtn: document.getElementById('clear-history-btn'),
-            wordCountDisplay: document.getElementById('word-count-display')
-        };
-        
-        const WORD_LIMIT = 1000;
+      const alert = document.createElement("div");
+      alert.id = id;
+      alert.setAttribute("role", "alert");
+      alert.setAttribute("aria-live", "assertive");
+      alert.style.padding = "0.75rem 1rem";
+      alert.style.borderRadius = "0.5rem";
+      alert.style.boxShadow = "0 10px 30px rgba(0,0,0,.15)";
+      alert.style.maxWidth = "28rem";
+      alert.style.fontSize = "0.95rem";
+      alert.style.display = "flex";
+      alert.style.alignItems = "flex-start";
+      alert.style.gap = "0.75rem";
+      alert.style.background = ({
+        success: "#ecfdf5",
+        info: "#eff6ff",
+        warning: "#fffbeb",
+        error: "#fef2f2"
+      }[type] || "#eff6ff");
+      alert.style.border = "1px solid " + ({
+        success: "#10b981",
+        info: "#3b82f6",
+        warning: "#f59e0b",
+        error: "#ef4444"
+      }[type] || "#3b82f6") + "33"; // subtle border
 
-        const sidebarOverlay = document.createElement('div');
-        sidebarOverlay.classList.add('sidebar-overlay');
-        document.body.appendChild(sidebarOverlay);
+      const dot = document.createElement("span");
+      dot.style.display = "inline-block";
+      dot.style.width = "0.6rem";
+      dot.style.height = "0.6rem";
+      dot.style.marginTop = "0.3rem";
+      dot.style.borderRadius = "999px";
+      dot.style.flex = "0 0 auto";
+      dot.style.background = ({
+        success: "#10b981",
+        info: "#3b82f6",
+        warning: "#f59e0b",
+        error: "#ef4444"
+      }[type] || "#3b82f6");
 
-        function markdownToHtml(text) {
-            if (typeof marked !== 'undefined') {
-               return marked.parse(text);
-            }
-            console.warn("marked.js not loaded. Using fallback markdown renderer.");
-            return text
-                .replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-                .replace(/\n/g, '<br>');
+      const text = document.createElement("div");
+      text.style.flex = "1 1 auto";
+      text.style.color = "#0b0b0b";
+      text.textContent = message;
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.setAttribute("aria-label", "Close notification");
+      close.textContent = "×";
+      close.style.all = "unset";
+      close.style.cursor = "pointer";
+      close.style.fontSize = "1.25rem";
+      close.style.lineHeight = "1";
+      close.style.padding = "0 0.25rem";
+      close.style.color = "#111827";
+      on(close, "click", () => alert.remove());
+
+      alert.appendChild(dot);
+      alert.appendChild(text);
+      alert.appendChild(close);
+      region.appendChild(alert);
+
+      if (timeout > 0) {
+        setTimeout(() => alert.remove(), timeout);
+      }
+
+      return id;
+    };
+
+    // ------- Modal System -------
+    const openModal = (modalEl) => {
+      if (!modalEl) return;
+      modalEl.setAttribute("aria-hidden", "false");
+      modalEl.style.display = "block";
+      document.documentElement.classList.add("no-scroll");
+      const focusable = modalEl.querySelector("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+      if (focusable) focusable.focus();
+    };
+
+    const closeModal = (modalEl) => {
+      if (!modalEl) return;
+      modalEl.setAttribute("aria-hidden", "true");
+      modalEl.style.display = "none";
+      document.documentElement.classList.remove("no-scroll");
+    };
+
+    const initModals = () => {
+      // Open via data-modal-target="#modalId"
+      delegate(document, "click", SELECTORS.modalOpenBtn, (e, btn) => {
+        e.preventDefault();
+        const targetSel = btn.getAttribute("data-modal-target");
+        const modal = targetSel ? qs(targetSel) : null;
+        openModal(modal);
+      });
+
+      // Close when clicking a close button or backdrop
+      delegate(document, "click", SELECTORS.modalCloseBtn, (e, btn) => {
+        e.preventDefault();
+        const modal = btn.closest(SELECTORS.modal);
+        closeModal(modal);
+      });
+
+      delegate(document, "click", SELECTORS.modal, (e, modal) => {
+        // Close if clicked on backdrop area
+        if (e.target === modal) closeModal(modal);
+      });
+
+      // Escape to close topmost open modal
+      on(document, "keydown", (e) => {
+        if (e.key === "Escape") {
+          const open = qsa(SELECTORS.modal).find((m) => m.getAttribute("aria-hidden") === "false");
+          if (open) closeModal(open);
         }
-        
-        const highlightCodeBlocks = () => {
-           if (typeof hljs === 'undefined') {
-               console.warn('highlight.js not loaded, skipping syntax highlighting.');
-               return;
-           }
-        
-           document.querySelectorAll('#chat-log pre').forEach((preElement) => {
-               const block = preElement.querySelector('code');
-               if (!block) return;
-        
-               if (!block.hasAttribute('data-highlighted')) {
-                   hljs.highlightElement(block);
-                   block.setAttribute('data-highlighted', 'true');
-               }
-        
-               if (!preElement.querySelector('.code-copy-btn')) {
-                   const copyBtn = document.createElement('button');
-                   copyBtn.className = 'code-copy-btn';
-                   copyBtn.title = 'Copy code';
-        
-                   const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
-                   const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-        
-                   copyBtn.innerHTML = clipboardIcon;
-        
-                   copyBtn.addEventListener('click', () => {
-                       navigator.clipboard.writeText(block.innerText).then(() => {
-                           copyBtn.innerHTML = checkIcon;
-                           setTimeout(() => {
-                               copyBtn.innerHTML = clipboardIcon;
-                           }, 2000);
-                       }).catch(err => {
-                           console.error('Failed to copy text: ', err);
-                       });
-                   });
-        
-                   preElement.prepend(copyBtn);
-               }
-           });
-        };
+      });
+    };
 
-        const showAlert = (message, type = 'info') => {
-            if (alertTimeout) clearTimeout(alertTimeout);
-            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
-            if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
-            if (DOMElements.jsAlertContainer) {
-                DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
-                DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
-            }
-            alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), ALERT_DURATION);
-        };
+    // ------- Public API -------
+    const init = () => {
+      initModals();
+    };
 
-        const showProcessing = (isProcessing) => {
-            if (DOMElements.generateBtn) DOMElements.generateBtn.disabled = isProcessing;
-        };
-        
-        const toggleHistorySidebar = () => {
-            if (DOMElements.historySidebar && sidebarOverlay) {
-                DOMElements.historySidebar.classList.toggle('mobile-hidden');
-                sidebarOverlay.classList.toggle('show');
-            }
-        };
+    return {
+      init,
+      // Expose utilities to other modules (no global namespace pollution)
+      utils: { qs, qsa, on, delegate, debounce, throttle, uuid, serializeForm, jsonFetch, getCSRFToken },
+      // Globally accessible alert function as requested
+      showAlert
+    };
+  })();
 
-        const typeResponse = (messageContainer, messageBubble, text) => {
-            messageBubble.innerHTML = markdownToHtml(text);
-            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-            addMessageActions(messageContainer, text);
-            highlightCodeBlocks();
-        };
+  // Make showAlert globally reachable via window.App.showAlert
+  window.App = window.App || {};
+  window.App.showAlert = SharedComponents.showAlert;
 
-        const pollForTaskResult = (taskId, messageContainer, messageBubble) => {
-            let attempts = 0;
-            pollingInterval = setInterval(async () => {
-                attempts++;
-                if (attempts > 60) {
-                    clearInterval(pollingInterval);
-                    messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
-                    showProcessing(false);
-                    return;
-                }
-                try {
-                    const response = await fetch(`/get_playground_task_status/${taskId}`);
-                    if (!response.ok) {
-                        if (response.status !== 404 || attempts > 5) {
-                            throw new Error("Failed to get task status from server.");
-                        }
-                        return;
-                    }
-                    
-                    const data = await response.json();
-                    if (data.status === 'complete') {
-                        clearInterval(pollingInterval);
-                        
-                        typeResponse(messageContainer, messageBubble, data.response);
+  // ----------------------------------------------------------
+  // Playground (playground.html)
+  // ----------------------------------------------------------
+  const Playground = (function (Shared) {
+    const { qs, qsa, on, delegate, jsonFetch } = Shared.utils;
 
-                        showProcessing(false);
-                        
-                        if (data.conversation_title) {
-                            const convItem = DOMElements.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
-                            if (convItem) {
-                                const titleSpan = convItem.querySelector('span.truncate');
-                                if(titleSpan) titleSpan.textContent = data.conversation_title;
-                            }
-                        }
+    // Root container check to decide initialization
+    const ROOT_SELECTOR = "#playground-container";
 
-                    } else if (data.status === 'failed') {
-                        clearInterval(pollingInterval);
-                        messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Processing failed.'}</p>`;
-                        showProcessing(false);
-                    }
-                } catch (error) {
-                    clearInterval(pollingInterval);
-                    messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
-                    showProcessing(false);
-                }
-            }, 1000);
-        };
-        
-        const handleGenerate = async () => {
-            if (!DOMElements.promptInput) return;
-            const prompt = DOMElements.promptInput.value.trim();
-            if (!prompt && attachedFiles.length === 0) return showAlert('Please enter a prompt or attach a file.', 'info');
-            
-            const currentConversationId = DOMElements.conversationIdInput.value;
+    // Expected DOM structure (defensive checks guard if absent)
+    const SELECTORS = {
+      form: "#playground-form",
+      inputText: "#playground-input",
+      modelSelect: "#model-select",
+      fileInput: "#playground-file",
+      chatHistory: "#chat-history",
+      submitBtn: "#playground-submit",
+      clearBtn: "#playground-clear",
+      output: "#playground-output"
+    };
 
-            if (!currentConversationId && DOMElements.modelSelectionBar) {
-                DOMElements.modelSelectionBar.style.display = 'none';
-            }
-            if (!isChatActive) {
-                isChatActive = true;
-                if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
-                if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
-            }
-            let userInputPayload = [{ "type": "input_text", "text": prompt }];
-            let displayMessage = prompt;
-            attachedFiles.forEach(file => {
-                if (file.type.startsWith('image/')) {
-                    userInputPayload.push({ "type": "input_image", "image_url": { "url": file.data } });
-                } else {
-                    userInputPayload.push({ "type": "input_text", "text": `\n\n--- Document: ${file.name} ---\n${file.data}` });
-                }
-            });
-            if (attachedFiles.length > 0) {
-                displayMessage = prompt ? `${prompt} [${attachedFiles.length} file(s) attached]` : `[${attachedFiles.length} file(s) attached]`;
-            }
-            addMessageToLog('user', displayMessage);
-            
-            DOMElements.promptInput.value = '';
-            DOMElements.promptInput.dispatchEvent(new Event('input'));
-            attachedFiles = [];
-            renderAttachedFiles();
+    let root = null;
+    let abortController = null;
 
-            showProcessing(true);
-            const thinkingPlaceholder = `<div class="flex items-center gap-x-2"><div class="spinner !w-5 !h-5"></div><span>Thinking...</span></div>`;
-            const { messageContainer, messageBubble } = addMessageToLog('bot', thinkingPlaceholder, false);
-            try {
-                if (!DOMElements.modelSelector) throw new Error("Model selector not found.");
-                const selectedModel = DOMElements.modelSelector.dataset.selectedValue;
-                if (!selectedModel) throw new Error('Please select a model.');
-                const response = await fetch('/playground_chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        input: userInputPayload,
-                        conversation_id: currentConversationId,
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Failed to start the chat task.');
+    const appendMessage = (role, content) => {
+      const list = qs(SELECTORS.chatHistory, root);
+      if (!list) return;
 
-                if (data.conversation_id) {
-                    const isNewConversation = !DOMElements.conversationIdInput.value;
-                    DOMElements.conversationIdInput.value = data.conversation_id;
-                    if (isNewConversation) {
-                        await fetchConversations(); 
-                    }
-                }
+      const item = document.createElement("div");
+      item.className = `chat-item chat-item--${role}`;
+      item.style.padding = "0.5rem 0";
+      item.innerHTML = `
+        <div class="chat-role" style="font-weight:600; margin-bottom: .25rem;">${role === "user" ? "You" : "Assistant"}</div>
+        <div class="chat-content" style="white-space: pre-wrap;">${escapeHTML(content)}</div>
+      `;
+      list.appendChild(item);
+      // Scroll to bottom
+      list.scrollTop = list.scrollHeight;
+    };
 
-                if (data.status === 'processing_started' && data.task_id) {
-                    pollForTaskResult(data.task_id, messageContainer, messageBubble);
-                } else {
-                    throw new Error("Invalid response from server when starting task.");
-                }
-            } catch (error) {
-                messageBubble.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
-                showProcessing(false);
-            }
-        };
+    const escapeHTML = (str) => {
+      const div = document.createElement("div");
+      div.textContent = String(str || "");
+      return div.innerHTML;
+    };
 
-        const renderAttachedFiles = () => {
-            if (!DOMElements.attachmentPreviewContainer) return;
-            DOMElements.attachmentPreviewContainer.innerHTML = '';
-            if (attachedFiles.length === 0) return;
-            attachedFiles.forEach((file, index) => {
-                const fileElement = document.createElement('div');
-                fileElement.className = 'bg-gray-100 p-2 rounded-lg flex items-center justify-between text-sm';
-                let previewContent = `<span class="text-gray-700 truncate">${file.name}</span>`;
-                if (file.type.startsWith('image/')) {
-                    previewContent = `<img src="${file.data}" class="w-8 h-8 rounded-md object-cover mr-2">` + previewContent;
-                }
-                fileElement.innerHTML = `<div class="flex items-center gap-x-2">${previewContent}</div><button data-index="${index}" class="remove-attachment-btn p-1 rounded-full text-gray-500 hover:bg-gray-300"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
-                DOMElements.attachmentPreviewContainer.appendChild(fileElement);
-            });
-            document.querySelectorAll('.remove-attachment-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const indexToRemove = parseInt(e.currentTarget.dataset.index, 10);
-                    attachedFiles.splice(indexToRemove, 1);
-                    renderAttachedFiles();
-                });
-            });
-        };
-        
-        const showUploadSpinner = () => {
-            const dropZone = DOMElements.dropZone;
-            if (dropZone) {
-                const spinner = document.createElement('div');
-                spinner.className = 'spinner';
-                spinner.style.position = 'absolute';
-                spinner.style.top = '50%';
-                spinner.style.left = '50%';
-                spinner.style.transform = 'translate(-50%, -50%)';
-                dropZone.appendChild(spinner);
-                DOMElements.promptInput.disabled = true;
-            }
-        };
+    const setBusy = (busy) => {
+      const btn = qs(SELECTORS.submitBtn, root);
+      if (btn) {
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "Sending..." : (btn.getAttribute("data-label") || "Send");
+      }
+    };
 
-        const hideUploadSpinner = () => {
-            const dropZone = DOMElements.dropZone;
-            if (dropZone) {
-                const spinner = dropZone.querySelector('.spinner');
-                if (spinner) {
-                    dropZone.removeChild(spinner);
-                }
-                DOMElements.promptInput.disabled = false;
-            }
-        };
+    const clearChat = () => {
+      const list = qs(SELECTORS.chatHistory, root);
+      if (list) list.innerHTML = "";
+      const out = qs(SELECTORS.output, root);
+      if (out) out.textContent = "";
+      Shared.showAlert("info", "Playground cleared.", { timeout: 2500 });
+    };
 
-        const handleFiles = async (files) => {
-            showUploadSpinner();
-            const fileList = Array.from(files);
-            let totalSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
-            for (const file of fileList) {
-                totalSize += file.size;
-                if (totalSize > MAX_TOTAL_SIZE) {
-                    showAlert(`Total file size cannot exceed 10MB.`, 'danger');
-                    hideUploadSpinner();
-                    return;
-                }
-            }
-            showAlert('Processing attachments...', 'info');
-            for (const file of fileList) {
-                const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-                const allowedDocTypes = [
-                    'application/pdf', 
-                    'text/plain', 
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'application/zip',
-                    'application/x-zip-compressed'
-                ];
-                const allowedDocExtensions = ['pdf', 'docx', 'txt', 'zip'];
-                const fileExt = file.name.split('.').pop().toLowerCase();
-                
-                let fileData = { name: file.name, type: file.type, size: file.size, data: null };
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const textInput = qs(SELECTORS.inputText, root);
+      const modelSelect = qs(SELECTORS.modelSelect, root);
+      if (!textInput || !textInput.value.trim()) {
+        Shared.showAlert("warning", "Please enter a prompt.", { timeout: 3500 });
+        return;
+      }
 
-                if (allowedImageTypes.includes(file.type)) {
-                    fileData.data = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = (event) => resolve(event.target.result);
-                        reader.readAsDataURL(file);
-                    });
-                    attachedFiles.push(fileData);
-                } else if (allowedDocTypes.includes(file.type) || allowedDocExtensions.includes(fileExt)) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    try {
-                        const response = await fetch('/extract_text_from_file', { method: 'POST', body: formData });
-                        const data = await response.json();
-                        if (!response.ok) throw new Error(data.error);
-                        fileData.data = data.text;
-                        attachedFiles.push(fileData);
-                    } catch (error) {
-                        showAlert(`Failed to process ${file.name}: ${error.message}`, 'danger');
-                    }
-                } else {
-                    showAlert(`Unsupported file type: ${file.name}`, 'danger');
-                }
-            }
-            renderAttachedFiles();
-            hideUploadSpinner();
-        };
+      appendMessage("user", textInput.value);
 
-        const addMessageActions = (messageContainer, messageText) => {
-            const actionsContainer = document.createElement('div');
-            actionsContainer.className = 'flex items-center gap-x-2 mt-2 ml-2';
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-            copyBtn.title = 'Copy';
-            const clipboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>`;
-            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-            copyBtn.innerHTML = clipboardIcon;
-            copyBtn.onclick = () => {
-                navigator.clipboard.writeText(messageText);
-                copyBtn.innerHTML = checkIcon;
-                setTimeout(() => copyBtn.innerHTML = clipboardIcon, 2000);
-            };
-            const humanizeBtn = document.createElement('button');
-            humanizeBtn.className = 'p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-indigo-200 hover:text-indigo-700';
-            humanizeBtn.title = 'Humanize';
-            humanizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/></svg>`;
-            humanizeBtn.onclick = () => {
-                localStorage.setItem('textToHumanize', messageText);
-                window.open('/humanizer', '_blank');
-            };
-            actionsContainer.append(copyBtn, humanizeBtn);
-            messageContainer.appendChild(actionsContainer);
-        };
-        
-        const addMessageToLog = (sender, content, addActions = false) => {
-            if (!DOMElements.chatLog) return;
-            const isUser = sender === 'user';
-            const messageContainer = document.createElement('div');
-            messageContainer.className = `message-container ${isUser ? 'user-message-container' : 'bot-message-container'}`;
-            const messageBubble = document.createElement('div');
-            messageBubble.className = `message-bubble ${isUser ? 'user-message' : 'bot-message'}`;
-            
-            messageBubble.innerHTML = isUser ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") : markdownToHtml(content);
-            messageContainer.appendChild(messageBubble);
+      // Build payload from form; prefer form action or fallback route
+      const endpoint = form.getAttribute("action") || "/playground_chat";
+      const method = (form.getAttribute("method") || "POST").toUpperCase();
 
-            if (!isUser && addActions) {
-                addMessageActions(messageContainer, content);
-            }
-            
-            DOMElements.chatLog.appendChild(messageContainer);
-            highlightCodeBlocks();
-            DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-            return { messageContainer, messageBubble };
-        };
+      // If files present, use FormData (keeps it flexible if backend expects it)
+      const fd = new FormData(form);
+      fd.set("message", textInput.value);
+      if (modelSelect && modelSelect.value) fd.set("model", modelSelect.value);
 
-        const loadConversation = async (convId) => {
-            try {
-                const response = await fetch(`/conversation/${convId}`);
-                if (!response.ok) throw new Error('Failed to load conversation.');
-                
-                const data = await response.json();
-                const messages = data.messages;
-                const model_key = data.model_key;
+      // Abort any in-flight request
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
 
-                if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
-                
-                DOMElements.conversationIdInput.value = convId;
+      setBusy(true);
+      try {
+        const res = await Shared.utils.jsonFetch(endpoint, { method, data: fd, signal: abortController.signal });
+        // Expect { reply: "...", ... } from backend. Be defensive:
+        const reply = (res && (res.reply || res.response || res.output)) || "[No response payload]";
+        appendMessage("assistant", reply);
 
-                if (DOMElements.modelSelector && model_key) {
-                    DOMElements.modelSelector.dataset.selectedValue = model_key;
-                    const modelOption = DOMElements.modelSelectorOptions.querySelector(`[data-value="${model_key}"]`);
-                    if (modelOption && DOMElements.modelSelectorLabel) {
-                        DOMElements.modelSelectorLabel.textContent = modelOption.querySelector('span').textContent;
-                        DOMElements.modelSelectorOptions.querySelectorAll('.model-option').forEach(opt => opt.classList.remove('bg-gray-200'));
-                        modelOption.classList.add('bg-gray-200');
-                    }
-                }
-                
-                if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'none';
+        const out = qs(SELECTORS.output, root);
+        if (out) out.textContent = reply;
 
-                messages.forEach(msg => {
-                    let content = msg.content;
-                    if (msg.role === 'user' && typeof msg.content === 'string') {
-                        try { content = JSON.parse(msg.content); } catch (e) { /* Not JSON */ }
-                    }
-                    if (msg.role === 'user') {
-                        let displayContent = "";
-                         if (Array.isArray(content)) {
-                             const textParts = content.filter(part => part.type === 'input_text').map(part => part.text).join(' ');
-                             const hasAttachments = content.some(part => part.type !== 'input_text');
-                             displayContent = textParts + (hasAttachments ? ` [${content.length - 1} file(s) attached]` : '');
-                         } else {
-                             displayContent = content;
-                         }
-                        addMessageToLog('user', displayContent);
-                    } else {
-                        addMessageToLog('bot', content, true);
-                    }
-                });
-                if (DOMElements.chatLog) DOMElements.chatLog.scrollTop = DOMElements.chatLog.scrollHeight;
-                if (!isChatActive) {
-                    isChatActive = true;
-                    if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.add('chat-active');
-                    if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.add('chat-active');
-                }
-                document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.toggle('bg-gray-200', div.dataset.convId == convId));
-                
-                highlightCodeBlocks();
+      } catch (err) {
+        console.error(err);
+        Shared.showAlert("error", err.message || "Playground request failed.");
+      } finally {
+        setBusy(false);
+        // Keep input for context or clear it; here we clear for new prompt
+        if (textInput) textInput.value = "";
+      }
+    };
 
-                if (window.innerWidth < 1024) toggleHistorySidebar();
-            } catch (error) {
-                showAlert(error.message, 'danger');
-            }
-        };
+    const wireEvents = () => {
+      const form = qs(SELECTORS.form, root);
+      if (form) on(form, "submit", handleSubmit);
 
-        const deleteConversation = async (convId) => {
-            if (!confirm('Are you sure you want to delete this chat?')) return;
-            try {
-                const response = await fetch(`/conversation/${convId}`, { method: 'DELETE' });
-                if (!response.ok) throw new Error('Failed to delete.');
-                showAlert('Conversation deleted.', 'success');
-                fetchConversations(DOMElements.searchHistoryInput.value, 1);
-                if (DOMElements.conversationIdInput.value === convId) startNewChat();
-            } catch (error) {
-                showAlert(error.message, 'danger');
-            }
-        };
+      const clearBtn = qs(SELECTORS.clearBtn, root);
+      if (clearBtn) on(clearBtn, "click", (e) => {
+        e.preventDefault();
+        clearChat();
+      });
+    };
 
-        const clearAllConversations = async () => {
-            if (confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
-                try {
-                    const response = await fetch('/conversations/clear_all', { 
-                        method: 'POST' 
-                    });
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || 'Failed to clear history.');
-                    }
-                    showAlert('All conversations have been cleared.', 'success');
-                    fetchConversations(); 
-                    startNewChat();      
-                } catch (error) {
-                    showAlert(error.message, 'danger');
-                }
-            }
-        };
+    const init = () => {
+      root = qs(ROOT_SELECTOR);
+      if (!root) return; // Not on this page
 
-        const renderPagination = (totalPages, currentPage) => {
-            if (!DOMElements.paginationContainer) return;
-            DOMElements.paginationContainer.innerHTML = '';
-            if (totalPages <= 1) return;
-            const createButton = (text, page, isDisabled = false, isActive = false) => {
-                const button = document.createElement('button');
-                button.innerHTML = text;
-                button.dataset.page = page;
-                button.disabled = isDisabled;
-                button.className = `px-2 py-0.5 text-xs rounded-md ${isActive ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 border'}`;
-                return button;
-            };
-            const wrapper = document.createElement('div');
-            wrapper.className = 'flex items-center justify-center space-x-0.5';
-            wrapper.appendChild(createButton('&laquo;', currentPage - 1, currentPage === 1));
-            for (let i = 1; i <= totalPages; i++) {
-                if (totalPages > 7 && Math.abs(currentPage - i) > 2 && i !== 1 && i !== totalPages) {
-                    if (i === 2 || i === totalPages - 1) wrapper.insertAdjacentHTML('beforeend', `<span class="px-2 py-0.5 text-xs">...</span>`);
-                    continue;
-                }
-                wrapper.appendChild(createButton(i, i, false, i === currentPage));
-            }
-            wrapper.appendChild(createButton('&raquo;', currentPage + 1, currentPage === totalPages));
-            DOMElements.paginationContainer.appendChild(wrapper);
-        };
+      // Optional: stash original button label
+      const submit = qs(SELECTORS.submitBtn, root);
+      if (submit && !submit.getAttribute("data-label")) {
+        submit.setAttribute("data-label", submit.textContent || "Send");
+      }
 
-        const appendConversations = (conversations) => {
-            if (!DOMElements.conversationList) return;
-            DOMElements.conversationList.innerHTML = '';
-            if (!conversations || conversations.length === 0) {
-                DOMElements.conversationList.innerHTML = `<p class="text-xs text-gray-500 p-2">No past conversations.</p>`;
-                return;
-            }
-            conversations.forEach(conv => {
-                const convItem = document.createElement('div');
-                convItem.className = 'flex justify-between items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer';
-                convItem.dataset.convId = conv.id;
-                const titleSpan = document.createElement('span');
-                titleSpan.className = 'text-sm text-gray-700 truncate';
-                titleSpan.textContent = conv.title;
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'text-gray-400 hover:text-red-500 p-1';
-                // ✅ FIX 4: Added stroke-width="1.5" to the SVG for the dustbin icon
-                deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
-                convItem.append(titleSpan, deleteBtn);
-                titleSpan.onclick = () => loadConversation(conv.id);
-                deleteBtn.onclick = (e) => { e.stopPropagation(); deleteConversation(conv.id); };
-                DOMElements.conversationList.appendChild(convItem);
-            });
-        };
-        
-        const fetchConversations = async (query = '', page = 1) => {
-            if (isFetchingHistory) return;
-            isFetchingHistory = true;
-            if (DOMElements.historyLoadingSpinner) DOMElements.historyLoadingSpinner.style.display = 'block';
-            try {
-                const response = await fetch(`/get_conversations?q=${encodeURIComponent(query)}&page=${page}`);
-                if (!response.ok) throw new Error('Failed to fetch conversations.');
-                const data = await response.json();
-                appendConversations(data.conversations);
-                renderPagination(data.total_pages, data.current_page);
-            } catch (error) {
-                showAlert(error.message, 'danger');
-            } finally {
-                if (DOMElements.historyLoadingSpinner) DOMElements.historyLoadingSpinner.style.display = 'none';
-                isFetchingHistory = false;
-            }
-        };
+      wireEvents();
+    };
 
-        const startNewChat = () => {
-            clearInterval(pollingInterval);
-            if (DOMElements.conversationIdInput) DOMElements.conversationIdInput.value = '';
-            
-            attachedFiles = [];
-            renderAttachedFiles();
-            if (DOMElements.chatLog) DOMElements.chatLog.innerHTML = '';
-            if (DOMElements.promptInput) {
-                 DOMElements.promptInput.value = '';
-                 DOMElements.promptInput.dispatchEvent(new Event('input'));
-            }
-            if (DOMElements.modelSelectionBar) DOMElements.modelSelectionBar.style.display = 'block';
-            
-            addMessageToLog('bot', 'Hello! How can I assist you today? Select a model and ask me anything.', false);
+    return { init };
+  })(SharedComponents);
 
-            isChatActive = false;
-            if (DOMElements.playgroundWelcomeHeader) DOMElements.playgroundWelcomeHeader.classList.remove('chat-active');
-            if (DOMElements.playgroundContainer) DOMElements.playgroundContainer.classList.remove('chat-active');
-            if (window.innerWidth < 1024 && DOMElements.historySidebar && !DOMElements.historySidebar.classList.contains('mobile-hidden')) toggleHistorySidebar();
-            document.querySelectorAll('#conversation-list > div').forEach(div => div.classList.remove('bg-gray-200'));
-        };
-        
-        const setupModelSelector = async () => {
-            if (!DOMElements.modelSelector) {
-                console.warn("Model selector element not found.");
-                return;
-            }
-            try {
-                const response = await fetch('/api/get-models');
-                if (!response.ok) throw new Error('Failed to load models.');
-                const models = await response.json();
+  // ----------------------------------------------------------
+  // Humanizer (humanizer form page)
+  // ----------------------------------------------------------
+  const Humanizer = (function (Shared) {
+    const { qs, on } = Shared.utils;
 
-                if (!models || models.length === 0) {
-                    showAlert('Could not load any AI models. Please contact support.', 'danger');
-                    return; 
-                }
+    const ROOT_SELECTOR = "#humanizer-container";
 
-                if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.innerHTML = '';
-                const selectedModel = models.find(m => m.selected) || models[0];
-                models.forEach(model => {
-                    const li = document.createElement('li');
-                    li.className = 'model-option p-2 hover:bg-gray-100 cursor-pointer';
-                    li.dataset.value = model.value;
-                    li.innerHTML = `<span class="font-semibold">${model.label}</span>`;
-                    if (model.selected) li.classList.add('bg-gray-200');
-                    li.onclick = () => {
-                        if (DOMElements.modelSelectorOptions) {
-                            DOMElements.modelSelectorOptions.querySelectorAll('.model-option').forEach(opt => opt.classList.remove('bg-gray-200'));
-                        }
-                        li.classList.add('bg-gray-200');
-                        DOMElements.modelSelector.dataset.selectedValue = model.value;
-                        if (DOMElements.modelSelectorLabel) DOMElements.modelSelectorLabel.textContent = model.label;
-                        if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.classList.remove('options-visible');
-                    };
-                    if (DOMElements.modelSelectorOptions) DOMElements.modelSelectorOptions.appendChild(li);
-                });
-                DOMElements.modelSelector.dataset.selectedValue = selectedModel.value;
-                if (DOMElements.modelSelectorLabel) DOMElements.modelSelectorLabel.textContent = selectedModel.label;
-                if (DOMElements.modelSelectorBtn) DOMElements.modelSelectorBtn.onclick = () => DOMElements.modelSelectorOptions?.classList.toggle('options-visible');
-            } catch (error) {
-                showAlert(error.message, 'danger');
-            }
-        };
+    const SELECTORS = {
+      form: "#humanizer-form",
+      inputText: "#humanizer-input",
+      fileInput: "#humanizer-file",
+      submitBtn: "#humanizer-submit",
+      preview: "#humanizer-preview",
+      result: "#humanizer-result"
+    };
 
-        if (DOMElements.generateBtn) DOMElements.generateBtn.addEventListener('click', handleGenerate);
-        if (DOMElements.newChatBtn) DOMElements.newChatBtn.addEventListener('click', startNewChat);
-        if (DOMElements.showHistoryBtn) DOMElements.showHistoryBtn.addEventListener('click', toggleHistorySidebar);
-        if (DOMElements.clearHistoryBtn) DOMElements.clearHistoryBtn.addEventListener('click', clearAllConversations);
-        if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleHistorySidebar);
-        if (DOMElements.searchHistoryInput) {
-            let searchTimeout;
-            DOMElements.searchHistoryInput.oninput = (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => fetchConversations(e.target.value, 1), 300);
-            };
+    let root = null;
+
+    const setBusy = (busy) => {
+      const btn = qs(SELECTORS.submitBtn, root);
+      if (btn) {
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "Processing..." : (btn.getAttribute("data-label") || "Humanize");
+      }
+    };
+
+    const handleFilePreview = (e) => {
+      const input = e.currentTarget;
+      const preview = qs(SELECTORS.preview, root);
+      if (!preview) return;
+
+      const files = input.files || [];
+      if (!files.length) {
+        preview.textContent = "No file selected.";
+        return;
+      }
+      // Preview just the filename(s) and size(s)
+      const lines = Array.from(files).map(f => `${f.name} (${Math.round(f.size / 1024)} KB)`);
+      preview.textContent = lines.join("\n");
+    };
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+
+      const textInput = qs(SELECTORS.inputText, root);
+      const fileInput = qs(SELECTORS.fileInput, root);
+
+      if ((!textInput || !textInput.value.trim()) && (!fileInput || !(fileInput.files || []).length)) {
+        Shared.showAlert("warning", "Provide text or upload a file to humanize.");
+        return;
+      }
+
+      const endpoint = form.getAttribute("action") || "/humanize";
+      const method = (form.getAttribute("method") || "POST").toUpperCase();
+
+      const fd = new FormData(form);
+      if (textInput) fd.set("text", textInput.value);
+
+      setBusy(true);
+      try {
+        const res = await Shared.utils.jsonFetch(endpoint, { method, data: fd });
+        // Expect { task_id, result, ... } depending on backend
+        const resultBox = qs(SELECTORS.result, root);
+        if (res && res.result && resultBox) {
+          resultBox.textContent = res.result;
+          Shared.showAlert("success", "Humanization complete.");
+        } else if (res && res.task_id) {
+          // If async task, redirect or notify
+          Shared.showAlert("info", "Your request was queued. Opening task view...");
+          // Defer a bit in case UI needs to settle
+          setTimeout(() => {
+            window.location.href = `/task/${encodeURIComponent(res.task_id)}`;
+          }, 500);
+        } else {
+          Shared.showAlert("info", "Submitted. You'll see results shortly.");
         }
-        if (DOMElements.paginationContainer) {
-            DOMElements.paginationContainer.onclick = (e) => {
-                const button = e.target.closest('button');
-                if (button && button.dataset.page && !button.disabled) fetchConversations(DOMElements.searchHistoryInput.value, parseInt(button.dataset.page));
-            };
+      } catch (err) {
+        console.error(err);
+        Shared.showAlert("error", err.message || "Humanization failed.");
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const wireEvents = () => {
+      const form = qs(SELECTORS.form, root);
+      if (form) on(form, "submit", handleSubmit);
+
+      const fileInput = qs(SELECTORS.fileInput, root);
+      if (fileInput) on(fileInput, "change", handleFilePreview);
+    };
+
+    const init = () => {
+      root = qs(ROOT_SELECTOR);
+      if (!root) return;
+
+      const submit = qs(SELECTORS.submitBtn, root);
+      if (submit && !submit.getAttribute("data-label")) {
+        submit.setAttribute("data-label", submit.textContent || "Humanize");
+      }
+
+      wireEvents();
+    };
+
+    return { init };
+  })(SharedComponents);
+
+  // ----------------------------------------------------------
+  // TaskView (view_task.html)
+  // ----------------------------------------------------------
+  const TaskView = (function (Shared) {
+    const { qs, on, jsonFetch } = Shared.utils;
+
+    const ROOT_SELECTOR = "#task-view-container";
+
+    const SELECTORS = {
+      container: ROOT_SELECTOR,
+      status: "#task-status",
+      result: "#task-result",
+      error: "#task-error",
+      copyBtn: "#copy-result",
+      cancelBtn: "#cancel-task",
+      // Where to retrieve the task id (use whichever exists)
+      taskIdMeta: 'meta[name="task-id"]',
+      taskIdInput: 'input[name="task_id"]',
+      taskIdDataAttr: ROOT_SELECTOR // expects data-task-id on container
+    };
+
+    let root = null;
+    let polling = false;
+    let pollTimer = null;
+
+    const getTaskId = () => {
+      // Priority 1: data-task-id on container
+      if (root && root.dataset && root.dataset.taskId) return root.dataset.taskId;
+      // Priority 2: meta tag
+      const meta = document.querySelector(SELECTORS.taskIdMeta);
+      if (meta && meta.content) return meta.content;
+      // Priority 3: hidden input
+      const input = document.querySelector(SELECTORS.taskIdInput);
+      if (input && input.value) return input.value;
+      return null;
+    };
+
+    const updateUI = ({ status, result, error }) => {
+      const statusEl = qs(SELECTORS.status, root);
+      const resultEl = qs(SELECTORS.result, root);
+      const errorEl = qs(SELECTORS.error, root);
+
+      if (statusEl) statusEl.textContent = status || "unknown";
+
+      if (resultEl) {
+        resultEl.textContent = result || "";
+        resultEl.style.display = result ? "block" : "none";
+      }
+
+      if (errorEl) {
+        errorEl.textContent = error || "";
+        errorEl.style.display = error ? "block" : "none";
+      }
+    };
+
+    const pollStatus = async () => {
+      if (polling) return;
+      polling = true;
+
+      const taskId = getTaskId();
+      if (!taskId) {
+        Shared.showAlert("error", "No task id found on this page.");
+        return;
+      }
+
+      const endpoint = `/task/${encodeURIComponent(taskId)}/status`;
+
+      try {
+        const data = await jsonFetch(endpoint, { method: "GET" });
+        // Expected shape: { status, result?, error? }
+        updateUI(data || {});
+        const status = (data && data.status) || "unknown";
+
+        if (["completed", "failed", "revoked", "canceled"].includes(status)) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          Shared.showAlert(
+            status === "completed" ? "success" :
+            status === "failed" ? "error" : "warning",
+            `Task ${status}.`
+          );
         }
-        
-        if (DOMElements.promptInput && DOMElements.generateBtn && DOMElements.wordCountDisplay) {
-            DOMElements.wordCountDisplay.style.display = 'none';
+      } catch (err) {
+        console.error(err);
+        Shared.showAlert("error", err.message || "Failed to poll task status.");
+        // Backoff: pause polling for one cycle
+      } finally {
+        polling = false;
+      }
+    };
 
-            DOMElements.promptInput.addEventListener('input', () => {
-                const trimmedValue = DOMElements.promptInput.value.trim();
-                const words = trimmedValue ? trimmedValue.split(/\s+/).filter(Boolean) : [];
-                const wordCount = words.length;
+    const copyResultToClipboard = async () => {
+      const resultEl = qs(SELECTORS.result, root);
+      if (!resultEl || !resultEl.textContent) {
+        Shared.showAlert("warning", "No result to copy.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(resultEl.textContent);
+        Shared.showAlert("success", "Result copied to clipboard.");
+      } catch (_) {
+        // Fallback
+        const area = document.createElement("textarea");
+        area.value = resultEl.textContent;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+        Shared.showAlert("success", "Result copied to clipboard.");
+      }
+    };
 
-                DOMElements.wordCountDisplay.style.display = trimmedValue ? 'block' : 'none';
-                DOMElements.wordCountDisplay.textContent = `${wordCount} / ${WORD_LIMIT} words`;
+    const cancelTask = async () => {
+      const taskId = getTaskId();
+      if (!taskId) return;
+      const endpoint = `/task/${encodeURIComponent(taskId)}/cancel`;
+      try {
+        await jsonFetch(endpoint, { method: "POST" });
+        Shared.showAlert("info", "Cancellation requested.");
+        // Force a status refresh soon
+        setTimeout(pollStatus, 500);
+      } catch (err) {
+        console.error(err);
+        Shared.showAlert("error", err.message || "Failed to cancel task.");
+      }
+    };
 
-                if (wordCount > WORD_LIMIT) {
-                    DOMElements.wordCountDisplay.classList.add('text-red-500');
-                    DOMElements.generateBtn.disabled = true;
-                } else {
-                    DOMElements.wordCountDisplay.classList.remove('text-red-500');
-                    DOMElements.generateBtn.disabled = !trimmedValue && attachedFiles.length === 0;
-                }
-            });
-        }
+    const wireEvents = () => {
+      const copyBtn = qs(SELECTORS.copyBtn, root);
+      if (copyBtn) on(copyBtn, "click", copyResultToClipboard);
 
-        if (DOMElements.promptInput) DOMElements.promptInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } };
-        if (DOMElements.uploadBtn) DOMElements.uploadBtn.onclick = () => DOMElements.fileInput?.click();
-        if (DOMElements.fileInput) DOMElements.fileInput.onchange = (e) => handleFiles(e.target.files);
-        if (DOMElements.dropZone) {
-            DOMElements.dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                DOMElements.dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
-            });
-            DOMElements.dropZone.addEventListener('dragleave', () => {
-                DOMElements.dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
-            });
-            DOMElements.dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                DOMElements.dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
-                handleFiles(e.dataTransfer.files);
-            });
-        }
+      const cancelBtn = qs(SELECTORS.cancelBtn, root);
+      if (cancelBtn) on(cancelBtn, "click", cancelTask);
+    };
 
-        startNewChat();
-        fetchConversations();
-        setupModelSelector();
-    }
+    const init = () => {
+      root = qs(ROOT_SELECTOR);
+      if (!root) return;
 
-    function initializeHumanizer() {
-        const AppState = {
-            isLoggedIn: document.getElementById('wallet-balance-amount') !== null,
-            pollingInterval: null,
-            isPolling: false,
-            alertTimeout: null,
-            transactionId: null,
-            pollingRetries: 0
-        };
-        
-        const WORDS_PER_UNIT = window.FLASK_WORDS_PER_UNIT || 275;
-        const PRICE_PER_UNIT = window.FLASK_PRICE_PER_UNIT || 49;
-        const ESSAY_PRICE_PER_UNIT = window.FLASK_ESSAY_PRICE_PER_UNIT || 49;
-        const FORMAT_ONLY_PRICE_PER_UNIT = window.FLASK_FORMAT_ONLY_PRICE_PER_UNIT || 19;
-        
-        const MIN_WORDS = 275;
-        const MAX_WORDS = 1925;
-        const POLLING_RATE = 1000;
-        const ALERT_DURATION = 5000;
-    
-        const DOMElements = {
-            humanizeForm: document.getElementById('humanizeForm'),
-            inputText: document.getElementById('input_text'),
-            wordCountDisplay: document.getElementById('input_word_count_display'),
-            estimatedCostDisplay: document.getElementById('estimated_cost_display'),
-            humanizeBtn: document.getElementById('openPaymentModalBtn'),
-            paymentModal: document.getElementById('paymentModal'),
-            closeMpesaModalBtn: document.getElementById('closeMpesaModalBtn'),
-            phoneInput: document.getElementById('phone_number_modal'),
-            submitPaymentBtn: document.getElementById('submitPaymentBtn'),
-            outputSection: document.getElementById('humanized_output_section'),
-            outputDisplay: document.getElementById('humanized_output_display'),
-            outputPlaceholder: document.getElementById('output_placeholder'),
-            typingText: document.getElementById('typing-text'),
-            outputWordCount: document.getElementById('output_word_count_value'),
-            copyBtn: document.getElementById('copyButton'),
-            resetBtn: document.getElementById('resetBtn'),
-            jsAlertContainer: document.getElementById('js-alert-container'),
-            jsAlertMessage: document.getElementById('js-alert-message'),
-            modeBtn: document.getElementById('modeBtn'),
-            formatBtn: document.getElementById('formatBtn'),
-            dialectBtn: document.getElementById('dialectBtn'),
-            modePopup: document.getElementById('modePopup'),
-            formatPopup: document.getElementById('formatPopup'),
-            dialectPopup: document.getElementById('dialectPopup'),
-            modeDisplay: document.getElementById('mode_display'),
-            formatDisplay: document.getElementById('format_display'),
-            dialectDisplay: document.getElementById('dialect_display'),
-            humanizerModeRadios: document.querySelectorAll('input[name="humanizer_mode"]'),
-            outputFormatRadios: document.querySelectorAll('input[name="output_format"]'),
-            englishDialectRadios: document.querySelectorAll('input[name="english_dialect"]'),
-            bibtexInput: document.getElementById('bibtex_input'),
-            toggleReferencesBtn: document.getElementById('toggleReferencesBtn'),
-            referencesSection: document.getElementById('references_section'),
-        };
-    
-        const typeAnimation = {
-            element: DOMElements.typingText,
-            text: "Your output/download link will appear here.",
-            speed: 75,
-            currentIndex: 0,
-            intervalId: null,
-            start: function() {
-                if (!this.element) return;
-                this.reset();
-                this.intervalId = setInterval(() => {
-                    if (this.currentIndex < this.text.length) {
-                        this.element.textContent += this.text.charAt(this.currentIndex);
-                        this.currentIndex++;
-                    } else {
-                        this.stop();
-                    }
-                }, this.speed);
-            },
-            stop: function() { clearInterval(this.intervalId); },
-            reset: function() {
-                this.stop();
-                if (this.element) this.element.textContent = '';
-                this.currentIndex = 0;
-            }
-        };
-        
-        function copyToClipboard(elementId) {
-            const element = document.getElementById(elementId);
-            if (!element) return;
-            navigator.clipboard.writeText(element.innerText).then(() => UI.showAlert('Copied!', 'success'));
-        }
-    
-        const UI = {
-            showAlert: (message, type = 'info') => {
-                if (AppState.alertTimeout) clearTimeout(AppState.alertTimeout);
-                const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
-                if (DOMElements.jsAlertMessage) DOMElements.jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
-                if (DOMElements.jsAlertContainer) {
-                    DOMElements.jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
-                    DOMElements.jsAlertContainer.classList.add(`flash-${type}`, 'show');
-                }
-                AppState.alertTimeout = setTimeout(() => DOMElements.jsAlertContainer?.classList.remove('show'), ALERT_DURATION);
-            },
-            updateWordCountAndCost: () => {
-                if (!DOMElements.inputText) return;
-                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-                const humanizerMode = document.querySelector('input[name="humanizer_mode"]:checked')?.value || 'standard';
-                
-                let currentPrice;
-                if (humanizerMode === 'essay') {
-                    currentPrice = ESSAY_PRICE_PER_UNIT;
-                } else if (humanizerMode === 'document_formatter') {
-                    currentPrice = FORMAT_ONLY_PRICE_PER_UNIT;
-                } else {
-                    currentPrice = PRICE_PER_UNIT;
-                }
-                
-                const cost = (words / WORDS_PER_UNIT) * currentPrice;
-                if (DOMElements.wordCountDisplay) DOMElements.wordCountDisplay.textContent = words;
-                if (DOMElements.estimatedCostDisplay) DOMElements.estimatedCostDisplay.textContent = `KSh ${cost.toFixed(2)}`;
-            },
-            updateFormattingOptions: () => {
-                const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
-                const selectedFormat = document.querySelector('input[name="output_format"]:checked');
-            
-                // First, enable all options
-                document.querySelectorAll('input[name="humanizer_mode"], input[name="output_format"]').forEach(radio => {
-                    const label = document.querySelector(`label[for="${radio.id}"]`);
-                    radio.disabled = false;
-                    if (label) {
-                        label.classList.remove('disabled');
-                    }
-                });
-            
-                // Apply rules based on selected mode
-                if (selectedMode) {
-                    if (selectedMode.value === 'standard') {
-                        document.querySelectorAll('input[name="output_format"]').forEach(radio => {
-                            if (['apa_7', 'mla_9', 'harvard'].includes(radio.value)) {
-                                radio.disabled = true;
-                                document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
-                                if (radio.checked) {
-                                    radio.checked = false;
-                                    const formatDisplay = document.getElementById('format_display');
-                                    if(formatDisplay) formatDisplay.textContent = "Format";
-                                }
-                            }
-                        });
-                    } else if (['essay', 'document_formatter'].includes(selectedMode.value)) {
-                        const plainTextRadio = document.querySelector('input[value="plain_text"]');
-                        if (plainTextRadio) {
-                            plainTextRadio.disabled = true;
-                            document.querySelector('label[for="plain_text_output"]').classList.add('disabled');
-                            if (plainTextRadio.checked) {
-                                plainTextRadio.checked = false;
-                                const formatDisplay = document.getElementById('format_display');
-                                if(formatDisplay) formatDisplay.textContent = "Format";
-                            }
-                        }
-                    }
-                }
-            
-                // Apply rules based on selected format
-                if (selectedFormat) {
-                    if (['apa_7', 'mla_9', 'harvard'].includes(selectedFormat.value)) {
-                        const standardRadio = document.querySelector('input[value="standard"]');
-                        if (standardRadio) {
-                            standardRadio.disabled = true;
-                            document.querySelector('label[for="mode_standard"]').classList.add('disabled');
-                            if (standardRadio.checked) {
-                                standardRadio.checked = false;
-                                const modeDisplay = document.getElementById('mode_display');
-                                if(modeDisplay) modeDisplay.textContent = "Mode";
-                            }
-                        }
-                    } else if (selectedFormat.value === 'plain_text') {
-                        document.querySelectorAll('input[name="humanizer_mode"]').forEach(radio => {
-                            if (['essay', 'document_formatter'].includes(radio.value)) {
-                                radio.disabled = true;
-                                document.querySelector(`label[for="${radio.id}"]`).classList.add('disabled');
-                                if (radio.checked) {
-                                    radio.checked = false;
-                                    const modeDisplay = document.getElementById('mode_display');
-                                    if(modeDisplay) modeDisplay.textContent = "Mode";
-                                }
-                            }
-                        });
-                    }
-                }
-            
-                // This is the corrected logic for the references button
-                const isDocx = selectedFormat && selectedFormat.value !== 'plain_text';
-                if (DOMElements.toggleReferencesBtn) {
-                    DOMElements.toggleReferencesBtn.classList.toggle('hidden', !isDocx);
-                }
-                if (!isDocx && DOMElements.referencesSection) {
-                     DOMElements.referencesSection.classList.add('hidden');
-                }
-            },
-            resetSelections: () => {
-                if (DOMElements.inputText) DOMElements.inputText.value = '';
-                if (DOMElements.bibtexInput) DOMElements.bibtexInput.value = '';
-    
-                // This ensures the references section and button are hidden by default
-                if (DOMElements.referencesSection) DOMElements.referencesSection.classList.add('hidden');
-                if (DOMElements.toggleReferencesBtn) DOMElements.toggleReferencesBtn.classList.add('hidden');
-    
-                if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = '';
-                if (DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = '0';
-                if (DOMElements.copyBtn) DOMElements.copyBtn.style.display = 'none';
-                if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'flex';
-                typeAnimation.start();
-                if (DOMElements.outputSection) DOMElements.outputSection.classList.add('mobile-hidden');
-                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
-                if(DOMElements.modeDisplay) DOMElements.modeDisplay.textContent = 'Mode';
-                if(DOMElements.formatDisplay) DOMElements.formatDisplay.textContent = 'Format';
-                if(DOMElements.dialectDisplay) DOMElements.dialectDisplay.textContent = 'Dialect';
-                document.querySelectorAll('.popup-trigger').forEach(btn => btn.classList.add('placeholder'));
-                UI.updateFormattingOptions();
-                UI.updateWordCountAndCost();
-            },
-            showProcessing: (message) => {
-                if (DOMElements.outputPlaceholder) DOMElements.outputPlaceholder.style.display = 'none';
-                typeAnimation.stop();
-                const loadingHtml = `<div id="loading-spinner" class="loading-in-output"><div class="spinner"></div><span class="mt-2">${message || "Processing..."}</span></div>`;
-                if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = loadingHtml;
-                if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = true;
-            },
-            hideProcessing: () => { if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false; },
-            renderOutput: (data) => {
-                if (data.download_url) {
-                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = `<a href="${data.download_url}" class="download-link text-indigo-600 hover:text-indigo-900 font-semibold">Click here to download your document</a>`;
-                } else {
-                    if (DOMElements.outputDisplay) DOMElements.outputDisplay.innerHTML = data.humanized_output;
-                }
-                if(DOMElements.outputWordCount) DOMElements.outputWordCount.textContent = data.output_word_count;
-                if(DOMElements.copyBtn && !data.download_url) DOMElements.copyBtn.style.display = 'block';
-            },
-            openAnonymousPaymentModal: () => {
-                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-                const cost = (words / WORDS_PER_UNIT) * PRICE_PER_UNIT;
-                if(document.getElementById('modal_word_count_display')) document.getElementById('modal_word_count_display').textContent = words;
-                if(document.getElementById('modal_estimated_cost_display')) document.getElementById('modal_estimated_cost_display').textContent = cost.toFixed(2);
-                DOMElements.paymentModal?.classList.remove('hidden');
-            },
-            closeAnonymousPaymentModal: () => DOMElements.paymentModal?.classList.add('hidden'),
-        };
-    
-        const Actions = {
-            submitHumanization: async () => {
-                const selectedMode = document.querySelector('input[name="humanizer_mode"]:checked');
-                const selectedFormat = document.querySelector('input[name="output_format"]:checked');
-                const selectedDialect = document.querySelector('input[name="english_dialect"]:checked');
-    
-                if (!selectedMode || !selectedFormat || !selectedDialect) {
-                    return UI.showAlert('Please select a Mode, Format, and Dialect before proceeding.', 'danger');
-                }
-    
-                const formData = new FormData(DOMElements.humanizeForm);
-                const words = DOMElements.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-                if (words < MIN_WORDS) return UI.showAlert(`Input must be at least ${MIN_WORDS} words.`, 'danger');
-                if (!AppState.isLoggedIn) {
-                    const phone = DOMElements.phoneInput.value.trim();
-                    if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return UI.showAlert('Invalid phone number.', 'danger');
-                    formData.set('phone_number', phone);
-                    UI.closeAnonymousPaymentModal();
-                }
-                UI.showProcessing('Processing request...');
-                try {
-                    const response = await fetch('/submit-humanize-task', { method: 'POST', body: formData });
-                    const data = await response.json();
-                    if (!response.ok) throw new Error(data.message || 'Error.');
-                    AppState.transactionId = data.transaction_id;
-                    Actions.startPolling();
-                } catch (error) {
-                    UI.showAlert(error.message, 'danger');
-                    UI.hideProcessing();
-                }
-            },
-            
-            checkStatus: async () => {
-                if (!AppState.transactionId) return;
-                try {
-                    const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
-                    
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            AppState.pollingRetries++;
-                            if (AppState.pollingRetries > 10) {
-                                throw new Error('Task could not be found. Please contact support.');
-                            }
-                            console.warn(`Task not found yet (attempt ${AppState.pollingRetries}), retrying...`);
-                            return;
-                        }
-                        throw new Error('Server returned an error.');
-                    }
-                    
-                    AppState.pollingRetries = 0;
-                    
-                    const data = await response.json();
-    
-                    if (data.status === 'complete' || data.status === 'download_ready') {
-                        Actions.stopPolling();
-                        UI.renderOutput(data);
-                        if (data.diff_data && data.diff_data.refund_info) {
-                            UI.showAlert(data.diff_data.refund_info, 'info');
-                        } else {
-                            UI.showAlert('Task complete!', 'success');
-                        }
-                    } else if (data.status === 'humanization_failed') {
-                        Actions.stopPolling();
-                        UI.showAlert(data.message || 'An unexpected error occurred. Please try again.', 'danger');
-                        UI.resetSelections();
-                    }
-                } catch (error) {
-                    Actions.stopPolling();
-                    UI.showAlert(error.message || 'Error checking status.', 'danger');
-                }
-            },
-    
-            startPolling: () => {
-                if (AppState.isPolling) return;
-                AppState.pollingRetries = 0;
-                AppState.pollingInterval = setInterval(Actions.checkStatus, POLLING_RATE);
-                AppState.isPolling = true;
-            },
-            stopPolling: () => {
-                clearInterval(AppState.pollingInterval);
-                AppState.isPolling = false;
-                UI.hideProcessing();
-            },
-        };
-    
-        const setupPopup = (button, popup, display, radios) => {
-            if (!button || !popup || !display || !radios) return;
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                document.querySelectorAll('.popup-menu').forEach(p => { if (p !== popup) p.classList.add('hidden'); });
-                popup.classList.toggle('hidden');
-            });
-            radios.forEach(radio => radio.addEventListener('change', () => {
-                display.textContent = radio.nextElementSibling.textContent;
-                button.classList.remove('placeholder');
-                popup.classList.add('hidden');
-                
-                UI.updateFormattingOptions();
-                UI.updateWordCountAndCost();
-    
-                if (radio.name === 'humanizer_mode') {
-                    if (radio.value === 'document_formatter') {
-                        DOMElements.humanizeBtn.textContent = 'Process';
-                    } else {
-                        DOMElements.humanizeBtn.textContent = 'Humanize';
-                    }
-                }
-            }));
-        };
-    
-        if (DOMElements.humanizeForm) {
-            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.disabled = false;
-    
-            DOMElements.inputText.oninput = UI.updateWordCountAndCost;
-            if (DOMElements.copyBtn) DOMElements.copyBtn.onclick = () => copyToClipboard('humanized_output_display');
-            if (DOMElements.resetBtn) DOMElements.resetBtn.onclick = UI.resetSelections;
-            if (DOMElements.humanizeBtn) DOMElements.humanizeBtn.onclick = () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
-            if (DOMElements.submitPaymentBtn) DOMElements.submitPaymentBtn.onclick = Actions.submitHumanization;
-            if (DOMElements.closeMpesaModalBtn) DOMElements.closeMpesaModalBtn.onclick = UI.closeAnonymousPaymentModal;
-            
-            if (DOMElements.toggleReferencesBtn && DOMElements.referencesSection) {
-                DOMElements.toggleReferencesBtn.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    DOMElements.referencesSection.classList.toggle('hidden');
-                });
-            }
-    
-            setupPopup(DOMElements.modeBtn, DOMElements.modePopup, DOMElements.modeDisplay, DOMElements.humanizerModeRadios);
-            setupPopup(DOMElements.formatBtn, DOMElements.formatPopup, DOMElements.formatDisplay, DOMElements.outputFormatRadios);
-            setupPopup(DOMElements.dialectBtn, DOMElements.dialectPopup, DOMElements.dialectDisplay, DOMElements.englishDialectRadios);
-            
-            document.body.addEventListener('click', (e) => {
-                if (!e.target.closest('.popup-control')) document.querySelectorAll('.popup-menu').forEach(p => p.classList.add('hidden'));
-            });
-    
-            UI.resetSelections();
-            const textToHumanize = localStorage.getItem('textToHumanize');
-            if (textToHumanize) {
-                DOMElements.inputText.value = textToHumanize;
-                UI.updateWordCountAndCost();
-                localStorage.removeItem('textToHumanize');
-            }
-        }
-    }
+      wireEvents();
 
-    function initializeTaskView() {
-        const copyBtn = document.getElementById('copyTaskOutputBtn');
-        const taskOutput = document.getElementById('taskOutput');
-        const jsAlertContainer = document.getElementById('js-alert-container');
-        const jsAlertMessage = document.getElementById('js-alert-message');
-        let alertTimeout = null;
+      // Start polling every 2 seconds
+      pollTimer = setInterval(pollStatus, 2000);
+      // Kick off immediately once
+      pollStatus();
+    };
 
-        const showAlert = (message, type = 'info') => {
-            if (alertTimeout) clearTimeout(alertTimeout);
-            const emojiMap = { success: '✅', danger: '❌', info: 'ℹ️' };
-            if (jsAlertMessage) jsAlertMessage.textContent = `${emojiMap[type] || 'ℹ️'} ${message}`;
-            if (jsAlertContainer) {
-                jsAlertContainer.className = 'js-alert-container flash-message rounded-lg shadow-md';
-                jsAlertContainer.classList.add(`flash-${type}`, 'show');
-            }
-            alertTimeout = setTimeout(() => jsAlertContainer?.classList.remove('show'), 5000);
-        };
+    return { init };
+  })(SharedComponents);
 
-        if (copyBtn && taskOutput) {
-            copyBtn.addEventListener('click', () => {
-                navigator.clipboard.writeText(taskOutput.innerText)
-                    .then(() => {
-                        showAlert('Copied to clipboard!', 'success');
-                    })
-                    .catch(err => {
-                        showAlert('Failed to copy text.', 'danger');
-                        console.error('Failed to copy text: ', err);
-                    });
-            });
-        }
-    }
-});
+  // ----------------------------------------------------------
+  // Bootstrapping (runs once on DOMContentLoaded)
+  // ----------------------------------------------------------
+  document.addEventListener("DOMContentLoaded", () => {
+    // Always initialize shared site-wide pieces
+    SharedComponents.init();
+
+    // Conditionally initialize page modules
+    Playground.init();
+    Humanizer.init();
+    TaskView.init();
+  });
+})();
