@@ -806,16 +806,19 @@
 
       if (DOM.promptInput && DOM.generateBtn && DOM.wordCountDisplay) {
         DOM.wordCountDisplay.style.display = "none";
-        // ✅ FIX: Hide send button by default
+        // ✅ FIX: Hide send and upload buttons by default
         DOM.generateBtn.style.display = "none";
+        if (DOM.uploadBtn) DOM.uploadBtn.style.display = "none";
 
         on(DOM.promptInput, "input", () => {
           const trimmedValue = (DOM.promptInput.value || "").trim();
           const words = trimmedValue ? trimmedValue.split(/\s+/).filter(Boolean) : [];
           const wordCount = words.length;
 
-          // ✅ FIX: Show button only when there is text
-          DOM.generateBtn.style.display = trimmedValue ? 'inline-flex' : 'none';
+          // ✅ FIX: Show buttons only when there is text
+          const displayStyle = trimmedValue ? 'inline-flex' : 'none';
+          DOM.generateBtn.style.display = displayStyle;
+          if (DOM.uploadBtn) DOM.uploadBtn.style.display = displayStyle;
 
           DOM.wordCountDisplay.style.display = trimmedValue ? "block" : "none";
           DOM.wordCountDisplay.textContent = `${wordCount} / 1000 words`;
@@ -1281,3 +1284,4 @@
   });
 
 })();
+
