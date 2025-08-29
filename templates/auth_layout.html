@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include '_head.html' %}
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 font-sans leading-normal tracking-normal">
+    {# This container is used to display flashed messages (e.g., success or error notifications) #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="messages-container fixed top-5 right-5 z-50">
+            {% for category, message in messages %}
+                <div class="alert-message bg-{{ 'green' if category == 'success' else 'red' }}-100 border border-{{ 'green' if category == 'success' else 'red' }}-400 text-{{ 'green' if category == 'success' else 'red' }}-700 px-4 py-3 rounded relative mb-2 shadow-lg" role="alert">
+                    <strong class="font-bold">{{ category.title() }}!</strong>
+                    <span class="block sm:inline">{{ message }}</span>
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    
+    {# The main content block will be filled by templates that extend this layout #}
+    {% block content %}{% endblock %}
+
+    {# A block for extra scripts specific to a child template #}
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
