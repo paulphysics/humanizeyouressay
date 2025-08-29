@@ -1,70 +1,54 @@
-import { auth, provider } from "./firebase-config.js";
-import {
-    // ✅ FIX: Added the missing GoogleAuthProvider import
-    GoogleAuthProvider,
-    signInWithPopup,
-    sendEmailVerification,
-    updateProfile
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 
-document.addEventListener('DOMContentLoaded', () => {
-    const signInWithGoogleButtonEl = document.getElementById("sign-in-with-google-btn");
-    const signUpWithGoogleButtonEl = document.getElementById("sign-up-with-google-btn");
-    const errorMsgEmail = document.getElementById("email-error-message");
-    const errorMsgPassword = document.getElementById("password-error-message");
+// Initialize Firebase
+const firebaseApp = initializeApp(window.firebaseConfig);
+const auth = getAuth(firebaseApp);
+const provider = new GoogleAuthProvider();
 
-    async function handleGoogleAuth() {
-        // This provider is now correctly defined thanks to the import
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ 'prompt': 'select_account' });
-        try {
-            const result = await signInWithPopup(auth, provider);
-            const user = result.user;
-            const idToken = await user.getIdToken();
-            const referralCodeInput = document.getElementById('referral-code-input');
-            const referralCode = referralCodeInput ? referralCodeInput.value.trim() : null;
-            
-            loginUser(idToken, referralCode);
-        } catch (error) {
-            console.error("Google Auth Error: ", error);
-            if(errorMsgEmail) errorMsgEmail.textContent = "Google sign-in failed. Please try again.";
-        }
-    }
+// Function to handle the entire Google Auth flow
+async function handleGoogleAuth() {
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const idToken = await user.getIdToken(true);
+        const referralCodeInput = document.getElementById('referral-code-input');
+        const referralCode = referralCodeInput ? referralCodeInput.value : null;
 
-    function loginUser(idToken, referralCode = null) {
-        return fetch('/auth', {
+        const response = await fetch('/auth', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
+                'Authorization': 'Bearer ' + idToken
             },
             body: JSON.stringify({
-                referral_code: referralCode
+                'referral_code': referralCode
             })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Server returned an error');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.is_admin) {
-                window.location.href = '/admin/dashboard';
-            } else {
-                window.location.href = '/playground';
-            }
-        })
-        .catch(error => {
-            console.error('Fetch Error:', error);
-            if(errorMsgPassword) errorMsgPassword.textContent = "Server login failed. Please try again.";
         });
+
+        if (response.ok) {
+            window.location.href = '/'; // Redirect to home on success
+        } else {
+            const errorMessage = await response.text();
+            const errorDisplay = document.getElementById('google-signin-error-message');
+            if (errorDisplay) {
+                errorDisplay.textContent = `Error: ${errorMessage}`;
+            }
+            console.error('Server auth error:', errorMessage);
+        }
+    } catch (error) {
+        const errorDisplay = document.getElementById('google-signin-error-message');
+        if (errorDisplay) {
+            errorDisplay.textContent = `Error: ${error.message}`;
+        }
+        console.error("Google Sign-In Error: ", error);
     }
-    
-    if (signInWithGoogleButtonEl) {
-        signInWithGoogleButtonEl.addEventListener("click", handleGoogleAuth);
-    }
-    if (signUpWithGoogleButtonEl) {
-        signUpWithGoogleButtonEl.addEventListener("click", handleGoogleAuth);
+}
+
+// Attach event listener to the button on the new auth page
+document.addEventListener('DOMContentLoaded', () => {
+    const googleSignInButton = document.getElementById('sign-in-with-google-btn');
+    if (googleSignInButton) {
+        googleSignInButton.addEventListener('click', handleGoogleAuth);
     }
 });
