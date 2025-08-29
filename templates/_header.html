@@ -6,11 +6,13 @@
         </a>
     </div>
 
+    {% if username %}
     <button id="menu-btn" class="lg:hidden focus:outline-none">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
     </button>
+    {% endif %}
 
-    <nav id="mobile-menu" class="hidden lg:flex items-center space-x-2 flex-nowrap">
+    <nav id="mobile-menu" class="{% if username %}hidden lg:flex{% else %}flex{% endif %} items-center space-x-2 flex-nowrap">
         {% if username %}
             {# --- Logged-in user menu items (unchanged) --- #}
             {% if not is_admin %}
