@@ -3,6 +3,11 @@
 {% block title %}My Referrals{% endblock %}
 
 {% block content %}
+<!-- ✅ FIX: Added container for custom alerts -->
+<div id="js-alert-container" class="js-alert-container flash-message rounded-lg shadow-md" style="display: none; position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999;">
+    <span id="js-alert-message"></span>
+</div>
+
 <main class="container mx-auto px-4 py-8">
     <div class="max-w-4xl mx-auto">
         <h1 class="text-3xl font-bold text-gray-800 mb-6">My Referrals</h1>
@@ -13,19 +18,19 @@
                 Share this code to earn a 10% commission on every humanization task your friends complete.
             </p>
             <div class="bg-gray-100 p-4 rounded-lg flex items-center justify-between">
-                
+
                 {% if user.referral_code %}
-                    <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
-                    <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
-                        Copy Code
-                    </button>
+                <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
+                <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
+                    Copy Code
+                </button>
                 {% else %}
-                    <span id="referralCode" class="text-lg font-mono text-gray-500 italic">Referral code not generated yet.</span>
-                    <button class="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold cursor-not-allowed" disabled>
-                        Copy Code
-                    </button>
+                <span id="referralCode" class="text-lg font-mono text-gray-500 italic">Referral code not generated yet.</span>
+                <button class="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold cursor-not-allowed" disabled>
+                    Copy Code
+                </button>
                 {% endif %}
-                </div>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -64,7 +69,7 @@
             <p class="text-gray-500">You haven't referred anyone yet. Share your code to get started!</p>
             {% endif %}
 
-            <!-- ✅ FIX: Pagination controls added -->
+            <!-- Pagination controls -->
             <div class="mt-6">
                 {% if pagination and pagination.pages > 1 %}
                 <nav class="flex justify-center">
@@ -74,11 +79,11 @@
                         {% endif %}
 
                         {% for page_num in pagination.iter_pages() %}
-                            {% if page_num %}
-                                <li><a href="{{ url_for('main.referrals_page', page=page_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight {{ 'text-blue-600 bg-blue-50' if page_num == pagination.page else 'text-gray-500 bg-white' }} border border-gray-300 hover:bg-gray-100 hover:text-gray-700">{{ page_num }}</a></li>
-                            {% else %}
-                                <li><span class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300">...</span></li>
-                            {% endif %}
+                        {% if page_num %}
+                        <li><a href="{{ url_for('main.referrals_page', page=page_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight {{ 'text-blue-600 bg-blue-50' if page_num == pagination.page else 'text-gray-500 bg-white' }} border border-gray-300 hover:bg-gray-100 hover:text-gray-700">{{ page_num }}</a></li>
+                        {% else %}
+                        <li><span class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300">...</span></li>
+                        {% endif %}
                         {% endfor %}
 
                         {% if pagination.has_next %}
@@ -93,14 +98,16 @@
 </main>
 
 <script>
-function copyReferralCode() {
-    const referralCode = document.getElementById('referralCode').innerText;
-    navigator.clipboard.writeText(referralCode).then(() => {
-        alert('Referral code copied to clipboard!');
-    }).catch(err => {
-        console.error('Failed to copy referral code: ', err);
-        alert('Failed to copy code.');
-    });
-}
+    function copyReferralCode() {
+        const referralCode = document.getElementById('referralCode').innerText;
+        navigator.clipboard.writeText(referralCode).then(() => {
+            // ✅ FIX: Use the global custom alert function
+            window.App.showAlert('Referral code copied to clipboard!', 'success');
+        }).catch(err => {
+            console.error('Failed to copy referral code: ', err);
+            // ✅ FIX: Use the global custom alert function for errors
+            window.App.showAlert('Failed to copy code.', 'danger');
+        });
+    }
 </script>
 {% endblock %}
