@@ -82,25 +82,36 @@
       }
 
       async function submitTopUp() {
+        if (!submitTopUpBtn) return;
+        const originalButtonText = submitTopUpBtn.innerHTML;
+        submitTopUpBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
+        submitTopUpBtn.disabled = true;
+
         try {
           const amountEl = qs("#top_up_amount");
           const phoneEl = qs("#phone_number_top_up");
           const amount = amountEl ? amountEl.value : null;
           const phone = phoneEl ? phoneEl.value.trim() : "";
-          if (!amount || amount <= 0) return showAlert("Please enter a valid amount.", "danger");
-          if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return showAlert("Invalid phone number.", "danger");
+          if (!amount || amount <= 0) throw new Error("Please enter a valid amount.");
+          if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
+
           closeTopUpModal();
           showAlert("Sending top-up request...", "info");
+
           const response = await fetch("/wallet/topup", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ amount: parseFloat(amount), phone_number: phone })
           });
+
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "An error occurred.");
           showAlert("STK push sent. Please check your phone to complete payment.", "success");
         } catch (err) {
           showAlert(err.message || "Top up failed", "danger");
+        } finally {
+          submitTopUpBtn.innerHTML = originalButtonText;
+          submitTopUpBtn.disabled = false;
         }
       }
 
@@ -120,7 +131,10 @@
         if (mobileMenu) mobileMenu.classList.toggle("hidden");
       }
 
-      if (submitTopUpBtn) on(submitTopUpBtn, "click", submitTopUp);
+      if (submitTopUpBtn) on(submitTopUpBtn, "click", (e) => {
+        e.preventDefault();
+        submitTopUp();
+      });
       if (walletToggle) on(walletToggle, "click", toggleWalletBalance);
       if (hamburgerBtn) on(hamburgerBtn, "click", toggleMobileMenu);
     }
@@ -1106,35 +1120,48 @@
     // Actions: submitting humanization and polling for status
     const Actions = {
       submitHumanization: async () => {
-        const selectedMode = qs('input[name="humanizer_mode"]:checked');
-        const selectedFormat = qs('input[name="output_format"]:checked');
-        const selectedDialect = qs('input[name="english_dialect"]:checked');
-
-        if (!selectedMode || !selectedFormat || !selectedDialect) {
-          return UI.showAlert("Please select a Mode, Format, and Dialect before proceeding.", "danger");
+        const submitBtn = DOM.submitPaymentBtn;
+        let originalButtonText = "";
+        if (submitBtn) {
+            originalButtonText = submitBtn.innerHTML;
+            submitBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
+            submitBtn.disabled = true;
         }
-
-        const formData = new FormData(DOM.humanizeForm);
-        const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
-        if (words < MIN_WORDS) return UI.showAlert(`Input must be at least ${MIN_WORDS} words.`, "danger");
-
-        if (!AppState.isLoggedIn) {
-          const phone = DOM.phoneInput ? DOM.phoneInput.value.trim() : "";
-          if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) return UI.showAlert("Invalid phone number.", "danger");
-          formData.set("phone_number", phone);
-          UI.closeAnonymousPaymentModal();
-        }
-
-        UI.showProcessing("Processing request...");
+    
         try {
-          const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || "Error.");
-          AppState.transactionId = data.transaction_id;
-          Actions.startPolling();
+            const selectedMode = qs('input[name="humanizer_mode"]:checked');
+            const selectedFormat = qs('input[name="output_format"]:checked');
+            const selectedDialect = qs('input[name="english_dialect"]:checked');
+    
+            if (!selectedMode || !selectedFormat || !selectedDialect) {
+                throw new Error("Please select a Mode, Format, and Dialect before proceeding.");
+            }
+    
+            const formData = new FormData(DOM.humanizeForm);
+            const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
+            if (words < MIN_WORDS) throw new Error(`Input must be at least ${MIN_WORDS} words.`);
+    
+            if (!AppState.isLoggedIn) {
+                const phone = DOM.phoneInput ? DOM.phoneInput.value.trim() : "";
+                if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
+                formData.set("phone_number", phone);
+                UI.closeAnonymousPaymentModal();
+            }
+    
+            UI.showProcessing("Processing request...");
+            const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Error submitting your request.");
+            AppState.transactionId = data.transaction_id;
+            Actions.startPolling();
         } catch (err) {
-          UI.showAlert(err.message || "Submission failed", "danger");
-          UI.hideProcessing();
+            UI.showAlert(err.message || "Submission failed", "danger");
+            UI.hideProcessing();
+        } finally {
+            if (submitBtn) {
+                submitBtn.innerHTML = originalButtonText;
+                submitBtn.disabled = false;
+            }
         }
       },
 
@@ -1219,7 +1246,12 @@
       if (DOM.copyBtn) on(DOM.copyBtn, "click", () => copyToClipboard("humanized_output_display"));
       if (DOM.resetBtn) on(DOM.resetBtn, "click", UI.resetSelections);
       if (DOM.humanizeBtn) on(DOM.humanizeBtn, "click", () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal());
-      if (DOM.submitPaymentBtn) on(DOM.submitPaymentBtn, "click", Actions.submitHumanization);
+      
+      if (DOM.submitPaymentBtn) on(DOM.submitPaymentBtn, "click", (e) => {
+          e.preventDefault();
+          Actions.submitHumanization();
+      });
+
       if (DOM.closeMpesaModalBtn) on(DOM.closeMpesaModalBtn, "click", UI.closeAnonymousPaymentModal);
 
       if (DOM.toggleReferencesBtn && DOM.referencesSection) {
