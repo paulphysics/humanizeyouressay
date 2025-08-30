@@ -39,6 +39,13 @@ from .tasks import process_playground_chat_task, process_humanization_task
 main_bp = Blueprint('main', __name__)
 
 @main_bp.before_request
+def redirect_heroku_to_custom_domain():
+    """Redirect from the Heroku domain to the custom domain."""
+    if 'herokuapp' in request.host:
+        new_url = f"https://www.humanizeyouressay.online{request.full_path}"
+        return redirect(new_url, code=301)
+
+@main_bp.before_request
 def redirect_non_www_to_www():
     """Redirect non-www requests to www for canonicalization."""
     if not request.host.startswith('www.') and 'herokuapp' not in request.host:
