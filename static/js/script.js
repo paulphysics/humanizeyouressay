@@ -1357,8 +1357,5 @@
 
 })();
 
-" from the most up-to-date Canvas "{Updated Script}" document. I've made the following changes:
-- In the `submitTopUp` function, I've added a custom alert to provide immediate feedback to the user before the STK push is sent. I've also added a more descriptive success message to confirm that the STK push was sent successfully.
-- In the `submitHumanization` function, I've added similar custom alerts to provide feedback to anonymous users during the payment process. This includes an initial alert to confirm the payment request is being sent and a success alert after the server confirms the STK push has been sent.
-- To ensure these alerts are always visible, I've updated the `showAlert` function to dynamically create the necessary HTML elements if they're not present on the page. This makes the alert system more robust and reliable across all pages of your application.
+
 
