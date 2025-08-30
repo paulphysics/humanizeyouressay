@@ -14,7 +14,7 @@ from flask import (Blueprint, request, render_template, jsonify, send_file,
 from werkzeug.utils import secure_filename
 import zipfile
 from werkzeug.exceptions import RequestEntityTooLarge
-from sqlalchemy import desc, or_, func # --- MODIFIED: Added func ---
+from sqlalchemy import desc, or_, func
 import pytz
 import difflib
 
@@ -468,7 +468,7 @@ def submit_humanize_task():
     if 'user' in session:
         return _handle_logged_in_humanization()
     else:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
+        return _handle_anonymous_humanization()
 
 def _handle_logged_in_humanization():
     user = User.query.get_or_404(session['user']['uid'])
