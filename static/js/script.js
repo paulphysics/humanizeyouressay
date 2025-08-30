@@ -95,8 +95,9 @@
           if (!amount || amount <= 0) throw new Error("Please enter a valid amount.");
           if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
 
-          closeTopUpModal();
+          // ✅ FIX: Show feedback BEFORE closing modal and making the request
           showAlert("Sending top-up request...", "info");
+          closeTopUpModal();
 
           const response = await fetch("/wallet/topup", {
             method: "POST",
@@ -106,7 +107,10 @@
 
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "An error occurred.");
-          showAlert("STK push sent. Please check your phone to complete payment.", "success");
+          
+          // ✅ FIX: Provide clearer success feedback
+          showAlert("STK push sent successfully! Please check your phone to complete the payment.", "success");
+
         } catch (err) {
           showAlert(err.message || "Top up failed", "danger");
         } finally {
@@ -1119,51 +1123,63 @@
 
     // Actions: submitting humanization and polling for status
     const Actions = {
-      submitHumanization: async () => {
-        const submitBtn = DOM.submitPaymentBtn;
-        let originalButtonText = "";
-        if (submitBtn) {
-            originalButtonText = submitBtn.innerHTML;
-            submitBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
-            submitBtn.disabled = true;
-        }
-    
-        try {
-            const selectedMode = qs('input[name="humanizer_mode"]:checked');
-            const selectedFormat = qs('input[name="output_format"]:checked');
-            const selectedDialect = qs('input[name="english_dialect"]:checked');
-    
-            if (!selectedMode || !selectedFormat || !selectedDialect) {
-                throw new Error("Please select a Mode, Format, and Dialect before proceeding.");
-            }
-    
-            const formData = new FormData(DOM.humanizeForm);
-            const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
-            if (words < MIN_WORDS) throw new Error(`Input must be at least ${MIN_WORDS} words.`);
-    
-            if (!AppState.isLoggedIn) {
-                const phone = DOM.phoneInput ? DOM.phoneInput.value.trim() : "";
-                if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
-                formData.set("phone_number", phone);
-                UI.closeAnonymousPaymentModal();
-            }
-    
-            UI.showProcessing("Processing request...");
-            const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || "Error submitting your request.");
-            AppState.transactionId = data.transaction_id;
-            Actions.startPolling();
-        } catch (err) {
-            UI.showAlert(err.message || "Submission failed", "danger");
-            UI.hideProcessing();
-        } finally {
+        submitHumanization: async () => {
+            const submitBtn = DOM.submitPaymentBtn;
+            let originalButtonText = "";
             if (submitBtn) {
-                submitBtn.innerHTML = originalButtonText;
-                submitBtn.disabled = false;
+                originalButtonText = submitBtn.innerHTML;
+                submitBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
+                submitBtn.disabled = true;
             }
-        }
-      },
+        
+            try {
+                const selectedMode = qs('input[name="humanizer_mode"]:checked');
+                const selectedFormat = qs('input[name="output_format"]:checked');
+                const selectedDialect = qs('input[name="english_dialect"]:checked');
+        
+                if (!selectedMode || !selectedFormat || !selectedDialect) {
+                    throw new Error("Please select a Mode, Format, and Dialect before proceeding.");
+                }
+        
+                const formData = new FormData(DOM.humanizeForm);
+                const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
+                if (words < MIN_WORDS) throw new Error(`Input must be at least ${MIN_WORDS} words.`);
+        
+                if (!AppState.isLoggedIn) {
+                    const phone = DOM.phoneInput ? DOM.phoneInput.value.trim() : "";
+                    if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
+                    formData.set("phone_number", phone);
+                    UI.closeAnonymousPaymentModal();
+                    // ✅ FIX: Provide immediate feedback BEFORE making the async request.
+                    UI.showAlert("Sending payment request...", "info");
+                }
+        
+                UI.showProcessing("Processing request...");
+                const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.message || "Error submitting your request.");
+
+                // ✅ FIX: Provide specific success feedback after the server confirms.
+                if (AppState.isLoggedIn) {
+                     UI.showAlert("Task submitted successfully! Your text is being humanized.", "success");
+                } else {
+                     UI.showAlert("STK push sent! Please complete payment on your phone.", "success");
+                }
+                
+                AppState.transactionId = data.transaction_id;
+                Actions.startPolling();
+
+            } catch (err) {
+                UI.showAlert(err.message || "Submission failed", "danger");
+                UI.hideProcessing();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.innerHTML = originalButtonText;
+                    submitBtn.disabled = false;
+                }
+            }
+          },
 
       checkStatus: async () => {
         if (!AppState.transactionId) return;
@@ -1245,7 +1261,11 @@
       if (DOM.inputText) on(DOM.inputText, "input", UI.updateWordCountAndCost);
       if (DOM.copyBtn) on(DOM.copyBtn, "click", () => copyToClipboard("humanized_output_display"));
       if (DOM.resetBtn) on(DOM.resetBtn, "click", UI.resetSelections);
-      if (DOM.humanizeBtn) on(DOM.humanizeBtn, "click", () => AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal());
+      
+      if (DOM.humanizeBtn) on(DOM.humanizeBtn, "click", (e) => {
+          e.preventDefault();
+          AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
+      });
       
       if (DOM.submitPaymentBtn) on(DOM.submitPaymentBtn, "click", (e) => {
           e.preventDefault();
