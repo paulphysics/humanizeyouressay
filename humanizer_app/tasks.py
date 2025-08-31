@@ -261,7 +261,7 @@ def process_playground_chat_task(self, task_id: int):
             task.error_message = """
                 <div class="alert alert-danger" role="alert">
                   Insufficient funds. Please 
-                  <a href="/topup" class="fw-semibold" style="color:#4B0082;">Top up</a> 
+                  <a href="/wallet/topup" class="fw-semibold" style="color:#4B0082;">Top up</a> 
                   to continue.
                 </div>
             """
