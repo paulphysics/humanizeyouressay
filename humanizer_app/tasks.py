@@ -30,7 +30,6 @@ def process_humanization_task(task_id: int):
     """
     The main Celery task for humanization. It runs on a separate worker process.
     """
-    # ... (This function remains unchanged)
     task = Task.query.get(task_id)
     if not task:
         logger.error(f"[Task ID: {task_id}] Task not found in background job.")
@@ -200,16 +199,12 @@ def process_playground_chat_task(self, task_id: int):
             response = gemini_model.generate_content(gemini_messages)
             
             # +++ START OF MODIFIED CODE +++
-            # Safely access the response text to prevent crashes from safety filters
             try:
                 output_text = response.text
             except ValueError:
-                # This block runs if response.text fails
                 finish_reason = response.candidates[0].finish_reason if response.candidates else 'UNKNOWN'
                 error_message = f"The AI model did not return a valid response. This can happen if the prompt violates safety policies. (Reason: {finish_reason})"
                 logger.warning(f"Gemini response for task {task.id} was blocked or empty. Reason: {finish_reason}")
-                
-                # Use the error message as the output
                 output_text = error_message
             # +++ END OF MODIFIED CODE +++
 
@@ -260,8 +255,19 @@ def process_playground_chat_task(self, task_id: int):
         output_word_count = count_words(output_text)
         total_cost = output_word_count * price_per_word
 
+        # --- MODIFIED INSUFFICIENT FUNDS HANDLING ---
         if user.wallet.balance < total_cost:
-            raise Exception("Insufficient funds detected during task execution.")
+            task.status = 'humanization_failed'
+            task.error_message = """
+                <div class="alert alert-danger" role="alert">
+                  Insufficient funds. Please 
+                  <a href="/topup" class="fw-semibold" style="color:#4B0082;">Top up</a> 
+                  to continue.
+                </div>
+            """
+            db.session.commit()
+            return
+        # --- END MODIFIED SECTION ---
 
         # --- BILLING AND COMMISSION LOGIC ---
         user.wallet.balance -= total_cost
