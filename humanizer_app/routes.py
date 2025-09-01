@@ -484,7 +484,7 @@ def _handle_logged_in_humanization():
         input_text = data.get("input_text", "").strip()
         word_count = count_words(input_text)
         humanizer_mode = data.get("humanizer_mode", "standard")
-        
+
         if not input_text:
             return jsonify({"status": "error", "message": "Text input is required."}), 400
 
@@ -493,14 +493,21 @@ def _handle_logged_in_humanization():
 
         price = ESSAY_PRICE_PER_UNIT if humanizer_mode == 'essay' else PRICE_PER_UNIT
         amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
+
+        # --- FIX: Stop the process if the balance is insufficient ---
         if user.wallet.balance < amount_to_charge:
-            flash("Your wallet balance is insufficient. Please top up your account to ensure that your tasks are processed.", "danger")
+            return jsonify({
+                "status": "error",
+                "message": "Your wallet balance is insufficient. Please top up your account."
+            }), 402 # 402 Payment Required
+        
+        # --- END OF FIX ---
 
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
                                    transaction_type='humanize_fee', description=transaction_ref))
-
+      
         # --- REFERRAL COMMISSION LOGIC START ---
         if user.referred_by:
             referrer = User.query.get(user.referred_by)
