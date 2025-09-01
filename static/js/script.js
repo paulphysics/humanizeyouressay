@@ -1254,7 +1254,7 @@
           Actions.stopPolling();
           UI.showAlert(err.message || "Error checking status.", "danger");
           UI.hideProcessing();
-          // ✅ FIX: Call reset function on any error
+            // ✅ FIX: Call reset function on any error
           UI.resetSelections();
         }
       },
@@ -1378,7 +1378,7 @@
   });
 
 // =============================
-// Auto Top-Up Button Click Logic
+// Auto Top-Up Button Click Logic (Updated with Regex)
 // =============================
 (function autoTopUpInit() {
   function onReady(fn) {
@@ -1397,26 +1397,12 @@
 
     let autoClickTimer = null;
 
-    // Normalize helper
-    const normalize = (s) => (s || "")
-      .toString()
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase();
-
-    // Only allow these exact wallet-top-up messages (normalized).
-    const ALLOWED_MESSAGES = new Set([
-      "insufficient funds. please top up your wallet to continue.",
-      "insufficient funds. please top up your wallet.",
-      "insufficient funds in your wallet. please top up to continue.",
-      "insufficient funds. please top up your wallet to continue",
-      "your wallet balance is insufficient. please top up your account.",
-      "error: sorry! insufficient funds! please top up to continue."
-    ]);
+    // Use a single, flexible regex to match common low-balance phrases.
+    // This is more resilient than a static list of strings.
+    const TOP_UP_REGEX = /(insufficient funds|please top up|insufficient balance)/i;
 
     function isWalletTopUpMessage(msg) {
-      const n = normalize(msg);
-      return ALLOWED_MESSAGES.has(n);
+      return TOP_UP_REGEX.test(msg);
     }
 
     function isModalOpen() {
@@ -1460,7 +1446,7 @@
       });
     }
 
-    // Observe alert container for new alerts (preferred path for this error)
+    // Observe alert container for new alerts
     const alertContainer = document.querySelector(ALERT_CONTAINER_SELECTOR);
     if (alertContainer) {
       const alertObserver = new MutationObserver((mutations) => {
@@ -1480,7 +1466,7 @@
       alertObserver.observe(alertContainer, { childList: true, subtree: true });
     }
 
-    // Observe chat for new messages (fallback)
+    // Observe chat for new messages
     const chatContainer = document.querySelector(CHAT_CONTAINER_SELECTOR);
     if (chatContainer) {
       const chatObserver = new MutationObserver((mutations) => {
