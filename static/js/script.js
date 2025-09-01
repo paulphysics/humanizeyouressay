@@ -1199,6 +1199,8 @@
             } catch (err) {
                 UI.showAlert(err.message || "Submission failed", "danger");
                 UI.hideProcessing();
+                // ✅ FIX: Call reset function on error
+                UI.resetSelections();
             } finally {
                 if (submitBtn) {
                     submitBtn.innerHTML = originalButtonText;
@@ -1219,6 +1221,8 @@
                 Actions.stopPolling();
                 UI.showAlert("Task could not be found. Please contact support.", "danger");
                 UI.hideProcessing();
+                // ✅ FIX: Call reset function on a critical error
+                UI.resetSelections();
                 return;
               }
               console.warn(`Task not found yet (attempt ${AppState.pollingRetries}), retrying...`);
@@ -1243,12 +1247,16 @@
             Actions.stopPolling();
             UI.showAlert(data.message || "An unexpected error occurred. Please try again.", "danger");
             UI.hideProcessing();
+            // ✅ FIX: Call reset function on failed status
+            UI.resetSelections();
           }
         } catch (err) {
           // ✅ FIX: Stop polling and spinner on any network/server error
           Actions.stopPolling();
           UI.showAlert(err.message || "Error checking status.", "danger");
           UI.hideProcessing();
+          // ✅ FIX: Call reset function on any error
+          UI.resetSelections();
         }
       },
 
