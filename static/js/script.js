@@ -392,12 +392,14 @@
             }
             highlightCodeBlocks();
           } else if (data.status === "failed") {
+            // ✅ FIX: Stop polling and spinner on failed status
             clearInterval(pollingInterval);
             pollingInterval = null;
             messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || "Processing failed."}</p>`;
             showProcessing(false);
           }
         } catch (err) {
+          // ✅ FIX: Stop polling and spinner on network/server errors
           clearInterval(pollingInterval);
           pollingInterval = null;
           messageBubble.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
@@ -1178,7 +1180,11 @@
                 const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
                 const data = await response.json();
 
-                if (!response.ok) throw new Error(data.message || "Error submitting your request.");
+                if (!response.ok) {
+                    // ✅ FIX: Throw an error for non-2xx responses from the server.
+                    // This ensures the catch block is always triggered for server-side errors.
+                    throw new Error(data.message || "Error submitting your request.");
+                }
 
                 // ✅ FIX: Provide specific success feedback after the server confirms.
                 if (AppState.isLoggedIn) {
@@ -1206,15 +1212,21 @@
         try {
           const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
           if (!response.ok) {
+            // ✅ FIX: If the server returns a 404, it might still be processing. Check attempts first.
             if (response.status === 404) {
               AppState.pollingRetries++;
               if (AppState.pollingRetries > 10) {
-                throw new Error("Task could not be found. Please contact support.");
+                Actions.stopPolling();
+                UI.showAlert("Task could not be found. Please contact support.", "danger");
+                UI.hideProcessing();
+                return;
               }
               console.warn(`Task not found yet (attempt ${AppState.pollingRetries}), retrying...`);
               return;
             }
-            throw new Error("Server returned an error.");
+            // ✅ FIX: Handle other non-ok responses as a failure.
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || "Server returned an error.");
           }
           AppState.pollingRetries = 0;
           const data = await response.json();
@@ -1227,13 +1239,16 @@
               UI.showAlert("Task complete!", "success");
             }
           } else if (data.status === "humanization_failed") {
+            // ✅ FIX: Stop polling and spinner on a "failed" status from the server
             Actions.stopPolling();
             UI.showAlert(data.message || "An unexpected error occurred. Please try again.", "danger");
-            UI.resetSelections();
+            UI.hideProcessing();
           }
         } catch (err) {
+          // ✅ FIX: Stop polling and spinner on any network/server error
           Actions.stopPolling();
           UI.showAlert(err.message || "Error checking status.", "danger");
+          UI.hideProcessing();
         }
       },
 
