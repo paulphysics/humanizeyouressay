@@ -36,8 +36,9 @@
     function showAlert(message, type = "info", duration = ALERT_DEFAULT_DURATION) {
       try {
         let jsAlertContainer = qs("#js-alert-container");
-
-        // If alert container doesn't exist in the DOM, create it.
+        
+        // ✅ If alert container doesn't exist in the DOM, create it.
+        // This makes the alert system work on any page, even if the layout is missing the element.
         if (!jsAlertContainer) {
             jsAlertContainer = document.createElement("div");
             jsAlertContainer.id = "js-alert-container";
@@ -53,10 +54,10 @@
         if (jsAlertMessage) {
             jsAlertMessage.textContent = `${emojiMap[type] || "ℹ️"} ${message}`;
         }
-
+        
         jsAlertContainer.className = "js-alert-container flash-message rounded-lg shadow-md";
         jsAlertContainer.classList.add(`flash-${type}`, "show");
-
+        
         // Clear any previous timeout to ensure the new alert's duration is respected
         if (jsAlertContainer.dataset.alertTimeout) {
             clearTimeout(parseInt(jsAlertContainer.dataset.alertTimeout, 10));
@@ -73,74 +74,95 @@
       }
     }
 
-    // This function will now correctly use Bootstrap
-    const openTopUpModal = () => {
+    // Top-up / wallet behavior extracted from original initializeSharedComponents
+    function initTopUpAndNav() {
       const topUpModal = qs("#topUpModal");
-      if (topUpModal) {
-        new bootstrap.Modal(topUpModal).show();
-      } else {
-        const topUpModalHtml = `
-          <!-- Top Up Modal -->
-          <div class="modal fade" id="topUpModal" tabindex="-1" aria-labelledby="topUpModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h5 class="modal-title" id="topUpModalLabel">Top Up Your Wallet</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                  <form id="topUpForm">
-                    <p class="text-sm text-gray-700">Select an amount to top up your wallet. Payments are processed securely via M-Pesa.</p>
-                    <div class="grid grid-cols-2 gap-4 my-4" id="amount-options">
-                      <div class="top-up-option active" data-amount="100" data-unit="words">
-                        <span class="text-lg font-bold">Ksh 10</span>
-                        <span class="text-sm text-gray-500">1,000 words</span>
-                      </div>
-                      <div class="top-up-option" data-amount="200" data-unit="words">
-                        <span class="text-lg font-bold">Ksh 20</span>
-                        <span class="text-sm text-gray-500">2,000 words</span>
-                      </div>
-                      <div class="top-up-option" data-amount="500" data-unit="words">
-                        <span class="text-lg font-bold">Ksh 50</span>
-                        <span class="text-sm text-gray-500">5,000 words</span>
-                      </div>
-                      <div class="top-up-option" data-amount="1000" data-unit="words">
-                        <span class="text-lg font-bold">Ksh 100</span>
-                        <span class="text-sm text-gray-500">10,000 words</span>
-                      </div>
-                    </div>
-                    <div class="mb-3">
-                      <label for="phoneNumber" class="form-label text-sm text-gray-700">M-Pesa Phone Number</label>
-                      <input type="tel" class="form-control" id="phoneNumber" placeholder="e.g., 0712345678" required>
-                    </div>
-                    <div class="flex items-center space-x-2 text-sm text-gray-500 mb-4">
-                      <span id="selected-amount">You will be charged Ksh 10.</span>
-                      <img src="/static/images/mpesa_logo.png" alt="M-Pesa" class="h-4">
-                    </div>
-                    <button type="submit" class="btn btn-primary w-full">Pay via M-Pesa</button>
-                    <div id="topUpStatus" class="mt-3 text-center text-sm"></div>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', topUpModalHtml);
-        const newTopUpModal = new bootstrap.Modal(qs('#topUpModal'));
-        newTopUpModal.show();
-      }
-    };
+      const topUpBtn = qs("#topUpBtn");
+      const mobileTopUpBtn = qs("#mobileTopUpBtn");
+      const closeTopUpModalBtn = qs("#closeTopUpModalBtn");
+      const submitTopUpBtn = qs("#submitTopUpBtn");
+      const walletToggle = qs("#wallet-toggle");
+      const hamburgerBtn = qs("#menu-btn");
+      const mobileMenu = qs("#mobile-menu");
 
-    const closeTopUpModal = () => {
-      const topUpModal = qs("#topUpModal");
+      const openTopUpModal = () => topUpModal && topUpModal.classList.remove("hidden");
+      const closeTopUpModal = () => topUpModal && topUpModal.classList.add("hidden");
+
+      // close by default
+      closeTopUpModal();
+
+      if (topUpBtn) on(topUpBtn, "click", openTopUpModal);
+      if (mobileTopUpBtn) on(mobileTopUpBtn, "click", openTopUpModal);
+      if (closeTopUpModalBtn) on(closeTopUpModalBtn, "click", closeTopUpModal);
+
       if (topUpModal) {
-        const modalInstance = bootstrap.Modal.getInstance(topUpModal);
-        if (modalInstance) {
-          modalInstance.hide();
+        on(topUpModal, "click", (e) => {
+          if (e.target === topUpModal) closeTopUpModal();
+        });
+      }
+
+      async function submitTopUp() {
+        if (!submitTopUpBtn) return;
+        const originalButtonText = submitTopUpBtn.innerHTML;
+        submitTopUpBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
+        submitTopUpBtn.disabled = true;
+
+        try {
+          const amountEl = qs("#top_up_amount");
+          const phoneEl = qs("#phone_number_top_up");
+          const amount = amountEl ? amountEl.value : null;
+          const phone = phoneEl ? phoneEl.value.trim() : "";
+          if (!amount || amount <= 0) throw new Error("Please enter a valid amount.");
+          if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
+
+          // ✅ FIX: Show feedback BEFORE closing modal and making the request
+          showAlert("Sending top-up request...", "info");
+          closeTopUpModal();
+
+          const response = await fetch("/wallet/topup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount: parseFloat(amount), phone_number: phone })
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "An error occurred.");
+          
+          // ✅ FIX: Provide clearer success feedback
+          showAlert("STK push sent successfully! Please check your phone to complete the payment.", "success");
+
+        } catch (err) {
+          showAlert(err.message || "Top up failed", "danger");
+        } finally {
+          submitTopUpBtn.innerHTML = originalButtonText;
+          submitTopUpBtn.disabled = false;
         }
       }
-    };
-    
+
+      function toggleWalletBalance() {
+        const walletIcon = qs("#wallet-icon");
+        const walletBalanceAmount = qs("#wallet-balance-amount");
+        if (!walletToggle || !walletIcon || !walletBalanceAmount) return;
+        const isHidden = walletToggle.classList.toggle("balance-hidden");
+        walletIcon.classList.toggle("text-gray-500", !isHidden);
+        walletIcon.classList.toggle("text-green-600", isHidden);
+        walletBalanceAmount.classList.toggle("text-green-600", !isHidden);
+        walletBalanceAmount.classList.toggle("text-gray-500", isHidden);
+        walletBalanceAmount.textContent = isHidden ? "KSh ***" : `KSh ${walletBalanceAmount.dataset.balance}`;
+      }
+
+      function toggleMobileMenu() {
+        if (mobileMenu) mobileMenu.classList.toggle("hidden");
+      }
+
+      if (submitTopUpBtn) on(submitTopUpBtn, "click", (e) => {
+        e.preventDefault();
+        submitTopUp();
+      });
+      if (walletToggle) on(walletToggle, "click", toggleWalletBalance);
+      if (hamburgerBtn) on(hamburgerBtn, "click", toggleMobileMenu);
+    }
+
     // Small utility for converting markdown to html (uses marked if present)
     function markdownToHtml(text) {
       if (typeof marked !== "undefined") {
@@ -183,55 +205,23 @@
       });
     }
 
-    // This function will now correctly use Bootstrap
-    function initTopUpAndNav() {
-        const topUpBtn = qs("#topUpBtn");
-        const mobileTopUpBtn = qs("#mobileTopUpBtn");
-        const walletToggle = qs("#wallet-toggle");
-        const hamburgerBtn = qs("#menu-btn");
-        const mobileMenu = qs("#mobile-menu");
-
-        // Use the new openTopUpModal function on all buttons
-        if (topUpBtn) on(topUpBtn, "click", openTopUpModal);
-        if (mobileTopUpBtn) on(mobileTopUpBtn, "click", openTopUpModal);
-
-        // ✅ Corrected: Moved the event listener inside the module to access `openTopUpModal`
-        document.addEventListener("click", function (e) {
-          const link = e.target.closest(".openTopUpFromChat");
-          if (link) {
-            e.preventDefault();
-            openTopUpModal();
-          }
-        });
-
-        function toggleWalletBalance() {
-            const walletIcon = qs("#wallet-icon");
-            const walletBalanceAmount = qs("#wallet-balance-amount");
-            if (!walletToggle || !walletIcon || !walletBalanceAmount) return;
-            const isHidden = walletToggle.classList.toggle("balance-hidden");
-            walletIcon.classList.toggle("text-gray-500", !isHidden);
-            walletIcon.classList.toggle("text-green-600", isHidden);
-            walletBalanceAmount.classList.toggle("text-green-600", !isHidden);
-            walletBalanceAmount.classList.toggle("text-gray-500", isHidden);
-            walletBalanceAmount.textContent = isHidden ? "KSh ***" : `KSh ${walletBalanceAmount.dataset.balance}`;
-        }
-
-        function toggleMobileMenu() {
-            if (mobileMenu) mobileMenu.classList.toggle("hidden");
-        }
-
-        if (walletToggle) on(walletToggle, "click", toggleWalletBalance);
-        if (hamburgerBtn) on(hamburgerBtn, "click", toggleMobileMenu);
+    function applyCssFixes() {
+      const style = document.createElement('style');
+      style.textContent = `
+            #js-alert-container.show {
+                display: block !important;
+            }
+        `;
+      document.head.appendChild(style);
     }
-    
+
     // Public API
     return {
       init: function () {
+        applyCssFixes();
         initTopUpAndNav();
       },
       showAlert,
-      openTopUpModal,
-      closeTopUpModal, // Exposing for Playground module to use
       utils: { qs, qsa, on, ready, markdownToHtml, highlightCodeBlocks }
     };
   })();
@@ -259,7 +249,6 @@
     let attachedFiles = [];
     const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10 MB
     let pollingInterval = null;
-    let topUpTimeout = null; // ✅ New: Timer for automatic top-up modal
 
     // DOM elements (same as original)
     const DOM = {
@@ -297,15 +286,6 @@
       sidebarOverlay = document.createElement("div");
       sidebarOverlay.classList.add("sidebar-overlay");
       document.body.appendChild(sidebarOverlay);
-    }
-
-    // ✅ NEW: Centralized function to open modal and clear timeout
-    function openTopUpModal() {
-      if (topUpTimeout) {
-        clearTimeout(topUpTimeout);
-        topUpTimeout = null;
-      }
-      Shared.openTopUpModal();
     }
 
     function localShowAlert(message, type = "info") {
@@ -362,28 +342,8 @@
         // escape
         messageBubble.innerHTML = String(content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       } else {
-        let html = markdownToHtml(content);
-
-        // Replace placeholder with clickable top-up link
-        html = html.replace(/TOPUP_LINK/g,
-          '<a href="#" class="openTopUpFromChat text-green-600 underline">Top up</a>'
-        );
-
-        messageBubble.innerHTML = html;
-        
-        // ✅ New: Auto-open top-up modal if content is "insufficient funds"
-        if (content.includes("TOPUP_LINK")) {
-          // Clear any existing timeout to prevent multiple modals
-          if (topUpTimeout) clearTimeout(topUpTimeout);
-          topUpTimeout = setTimeout(() => {
-            // Check if the modal is already open
-            if (!qs("#topUpModal")?.classList.contains("show")) {
-              openTopUpModal();
-            }
-          }, 4000); // 4 seconds
-        }
+        messageBubble.innerHTML = markdownToHtml(content);
       }
-
       messageContainer.appendChild(messageBubble);
 
       if (!isUser && addActions) {
@@ -426,7 +386,8 @@
             if (data.conversation_title && DOM.conversationList) {
               const convItem = DOM.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
               if (convItem) {
-                const titleSpan = convItem.querySelector("span").textContent = data.conversation_title;
+                const titleSpan = convItem.querySelector("span.truncate");
+                if (titleSpan) titleSpan.textContent = data.conversation_title;
               }
             }
             highlightCodeBlocks();
@@ -883,7 +844,7 @@
 
       if (DOM.promptInput && DOM.generateBtn && DOM.wordCountDisplay) {
         DOM.wordCountDisplay.style.display = "none";
-        // Hide send and upload buttons by default
+        // ✅ FIX: Hide send and upload buttons by default
         DOM.generateBtn.style.display = "none";
         if (DOM.uploadBtn) DOM.uploadBtn.style.display = "none";
 
@@ -892,7 +853,7 @@
           const words = trimmedValue ? trimmedValue.split(/\s+/).filter(Boolean) : [];
           const wordCount = words.length;
 
-          // Show buttons only when there is text
+          // ✅ FIX: Show buttons only when there is text
           const displayStyle = trimmedValue ? 'inline-flex' : 'none';
           DOM.generateBtn.style.display = displayStyle;
           if (DOM.uploadBtn) DOM.uploadBtn.style.display = displayStyle;
@@ -947,7 +908,7 @@
     }
 
     // Expose init
-    return { init, openTopUpModal };
+    return { init };
   })(SharedComponents);
 
   // -------------------------
@@ -1106,14 +1067,14 @@
             const standardRadio = qs('input[value="standard"]');
             if (standardRadio) {
               standardRadio.disabled = true;
-              const label = document.querySelector(`label[for="${radio.id}"]`);
+              const label = document.querySelector('label[for="mode_standard"]');
               if (label) label.classList.add("disabled");
               if (standardRadio.checked) {
                 standardRadio.checked = false;
                 if (DOM.modeDisplay) DOM.modeDisplay.textContent = "Mode";
-                }
               }
-            } else if (selectedFormat.value === "plain_text") {
+            }
+          } else if (selectedFormat.value === "plain_text") {
             qsa('input[name="humanizer_mode"]').forEach(radio => {
               if (["essay", "document_formatter"].includes(radio.value)) {
                 radio.disabled = true;
@@ -1132,242 +1093,222 @@
         if (DOM.toggleReferencesBtn) DOM.toggleReferencesBtn.classList.toggle("hidden", !isDocx);
         if (!isDocx && DOM.referencesSection) DOM.referencesSection.classList.add("hidden");
       },
-      showOutputSection: (isVisible) => {
-        if (DOM.outputSection) DOM.outputSection.classList.toggle("hidden", !isVisible);
-        if (DOM.outputPlaceholder) DOM.outputPlaceholder.classList.toggle("hidden", isVisible);
+      resetSelections: () => {
+        if (DOM.inputText) DOM.inputText.value = "";
+        if (DOM.bibtexInput) DOM.bibtexInput.value = "";
+        if (DOM.referencesSection) DOM.referencesSection.classList.add("hidden");
+        if (DOM.toggleReferencesBtn) DOM.toggleReferencesBtn.classList.add("hidden");
+        if (DOM.outputDisplay) DOM.outputDisplay.innerHTML = "";
+        if (DOM.outputWordCount) DOM.outputWordCount.textContent = "0";
+        if (DOM.copyBtn) DOM.copyBtn.style.display = "none";
+        if (DOM.outputPlaceholder) DOM.outputPlaceholder.style.display = "flex";
+        typeAnimation.start();
+        if (DOM.outputSection) DOM.outputSection.classList.add("mobile-hidden");
+        document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+        if (DOM.modeDisplay) DOM.modeDisplay.textContent = "Mode";
+        if (DOM.formatDisplay) DOM.formatDisplay.textContent = "Format";
+        if (DOM.dialectDisplay) DOM.dialectDisplay.textContent = "Dialect";
+        document.querySelectorAll(".popup-trigger").forEach(btn => btn.classList.add("placeholder"));
+        UI.updateFormattingOptions();
+        UI.updateWordCountAndCost();
       },
-    };
-
-    const mpesa = {
-      closeModal: () => { if (DOM.paymentModal) DOM.paymentModal.classList.add("hidden"); },
-      openModal: () => {
-        if (!DOM.humanizeBtn) return;
-        const words = DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-        if (words < MIN_WORDS || words > MAX_WORDS) {
-          UI.showAlert(`Please enter between ${MIN_WORDS} and ${MAX_WORDS} words.`, "danger");
-          return;
+      showProcessing: (message) => {
+        if (DOM.outputPlaceholder) DOM.outputPlaceholder.style.display = "none";
+        typeAnimation.stop();
+        const loadingHtml = `<div id="loading-spinner" class="loading-in-output"><div class="spinner"></div><span class="mt-2">${message || "Processing..."}</span></div>`;
+        if (DOM.outputDisplay) DOM.outputDisplay.innerHTML = loadingHtml;
+        if (DOM.humanizeBtn) DOM.humanizeBtn.disabled = true;
+      },
+      hideProcessing: () => { if (DOM.humanizeBtn) DOM.humanizeBtn.disabled = false; },
+      renderOutput: (data) => {
+        if (data.download_url) {
+          if (DOM.outputDisplay) DOM.outputDisplay.innerHTML = `<a href="${data.download_url}" class="download-link text-indigo-600 hover:text-indigo-900 font-semibold">Click here to download your document</a>`;
+        } else {
+          if (DOM.outputDisplay) DOM.outputDisplay.innerHTML = data.humanized_output;
         }
+        if (DOM.outputWordCount) DOM.outputWordCount.textContent = data.output_word_count || 0;
+        if (DOM.copyBtn && !data.download_url) DOM.copyBtn.style.display = "block";
+      },
+      openAnonymousPaymentModal: () => {
+        const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
+        const cost = (words / WORDS_PER_UNIT) * PRICE_PER_UNIT;
+        const modalWordCount = qs("#modal_word_count_display");
+        const modalEstimated = qs("#modal_estimated_cost_display");
+        if (modalWordCount) modalWordCount.textContent = words;
+        if (modalEstimated) modalEstimated.textContent = cost.toFixed(2);
         if (DOM.paymentModal) DOM.paymentModal.classList.remove("hidden");
       },
-      handlePayment: async () => {
-        const phone = DOM.phoneInput?.value.trim();
-        const words = DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-        if (!phone || !/^(0|\+254)7[0-9]{8}$/.test(phone)) {
-          return UI.showAlert("Please enter a valid M-Pesa phone number.", "danger");
-        }
-
-        try {
-          DOM.submitPaymentBtn.disabled = true;
-          DOM.submitPaymentBtn.innerHTML = `<span class="spinner"></span> Processing...`;
-          const response = await fetch("/initiate_mpesa", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone_number: phone, words: words }),
-          });
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.error || "Payment initiation failed.");
-          }
-          AppState.transactionId = data.transaction_id;
-          mpesa.closeModal();
-          UI.showAlert("STK push sent. Please approve the payment on your phone.", "info");
-          AppState.isPolling = true;
-          AppState.pollingRetries = 0;
-          AppState.pollingInterval = setInterval(humanizer.pollForPaymentStatus, POLLING_RATE);
-        } catch (err) {
-          UI.showAlert(err.message, "danger");
-          DOM.submitPaymentBtn.disabled = false;
-          DOM.submitPaymentBtn.innerHTML = "Pay via M-Pesa";
-        }
-      },
+      closeAnonymousPaymentModal: () => { if (DOM.paymentModal) DOM.paymentModal.classList.add("hidden"); }
     };
 
-    const humanizer = {
-      handleHumanize: async () => {
-        if (!AppState.isLoggedIn) {
-          return UI.showAlert("Please log in to use this feature.", "danger");
-        }
-        const words = DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length;
-        if (words < MIN_WORDS || words > MAX_WORDS) {
-          return UI.showAlert(`Please enter between ${MIN_WORDS} and ${MAX_WORDS} words.`, "danger");
-        }
-
-        const mode = qs('input[name="humanizer_mode"]:checked')?.value;
-        const format = qs('input[name="output_format"]:checked')?.value;
-        const dialect = qs('input[name="english_dialect"]:checked')?.value;
-        const bibtex = DOM.bibtexInput?.value.trim() || "";
-
-        try {
-          const payload = {
-            text: DOM.inputText.value,
-            humanizer_mode: mode,
-            output_format: format,
-            english_dialect: dialect,
-            bibtex_references: bibtex
-          };
-
-          const response = await fetch("/humanize_text", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.error || "An error occurred during humanization.");
-          }
-          if (data.status === "processing_started") {
-            AppState.transactionId = data.task_id;
-            UI.showAlert("Humanization started. Please wait...", "info");
-            UI.showOutputSection(true);
-            DOM.outputDisplay.innerHTML = `<div class="spinner"></div>`;
-            typeAnimation.start();
-            AppState.isPolling = true;
-            AppState.pollingRetries = 0;
-            AppState.pollingInterval = setInterval(humanizer.pollForTaskStatus, POLLING_RATE);
-          } else {
-            throw new Error("Invalid response from server.");
-          }
-        } catch (err) {
-          UI.showAlert(err.message, "danger");
-          UI.showOutputSection(false);
-          typeAnimation.reset();
-        }
-      },
-      pollForTaskStatus: async () => {
-        if (!AppState.isPolling || !AppState.transactionId) return;
-        AppState.pollingRetries++;
-        if (AppState.pollingRetries > 120) {
-          clearInterval(AppState.pollingInterval);
-          AppState.isPolling = false;
-          UI.showAlert("The process timed out. Please try again.", "danger");
-          DOM.outputDisplay.innerHTML = `<p class="text-red-500">Error: The process timed out.</p>`;
-          return;
-        }
-
-        try {
-          const response = await fetch(`/get_humanize_status/${AppState.transactionId}`);
-          if (!response.ok) {
-            if (response.status === 404 && AppState.pollingRetries < 5) return;
-            throw new Error("Failed to get status.");
-          }
-          const data = await response.json();
-          if (data.status === "complete") {
-            clearInterval(AppState.pollingInterval);
-            AppState.isPolling = false;
-            typeAnimation.stop();
-            if (data.download_url) {
-              const downloadLink = `<a href="${data.download_url}" target="_blank" class="text-indigo-600 hover:underline">Download your document</a>`;
-              DOM.outputDisplay.innerHTML = `✅ ${downloadLink}`;
-              UI.showAlert("Download ready!", "success");
-              if (DOM.outputWordCount) DOM.outputWordCount.textContent = data.words || "N/A";
-            } else if (data.output_text) {
-              DOM.outputDisplay.textContent = data.output_text;
-              UI.showAlert("Humanization complete!", "success");
-              if (DOM.outputWordCount) DOM.outputWordCount.textContent = data.words || "N/A";
+    // Actions: submitting humanization and polling for status
+    const Actions = {
+        submitHumanization: async () => {
+            const submitBtn = DOM.submitPaymentBtn;
+            let originalButtonText = "";
+            if (submitBtn) {
+                originalButtonText = submitBtn.innerHTML;
+                submitBtn.innerHTML = `<span class="spinner !w-5 !h-5"></span> Processing...`;
+                submitBtn.disabled = true;
             }
-          } else if (data.status === "failed") {
-            clearInterval(AppState.pollingInterval);
-            AppState.isPolling = false;
-            typeAnimation.stop();
-            DOM.outputDisplay.innerHTML = `<p class="text-red-500">Error: ${data.error || "Humanization failed."}</p>`;
-            UI.showAlert(data.error || "Humanization failed.", "danger");
-          }
-        } catch (err) {
-          clearInterval(AppState.pollingInterval);
-          AppState.isPolling = false;
-          typeAnimation.stop();
-          DOM.outputDisplay.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
-          UI.showAlert(err.message, "danger");
-        }
-      },
-      pollForPaymentStatus: async () => {
-        if (!AppState.isPolling || !AppState.transactionId) return;
-        AppState.pollingRetries++;
-        if (AppState.pollingRetries > 120) {
-          clearInterval(AppState.pollingInterval);
-          AppState.isPolling = false;
-          UI.showAlert("Payment timed out. Please try again.", "danger");
-          DOM.submitPaymentBtn.disabled = false;
-          DOM.submitPaymentBtn.innerHTML = "Pay via M-Pesa";
-          return;
-        }
+        
+            try {
+                const selectedMode = qs('input[name="humanizer_mode"]:checked');
+                const selectedFormat = qs('input[name="output_format"]:checked');
+                const selectedDialect = qs('input[name="english_dialect"]:checked');
+        
+                if (!selectedMode || !selectedFormat || !selectedDialect) {
+                    throw new Error("Please select a Mode, Format, and Dialect before proceeding.");
+                }
+        
+                const formData = new FormData(DOM.humanizeForm);
+                const words = DOM.inputText ? DOM.inputText.value.trim().split(/\s+/).filter(Boolean).length : 0;
+                if (words < MIN_WORDS) throw new Error(`Input must be at least ${MIN_WORDS} words.`);
+        
+                if (!AppState.isLoggedIn) {
+                    const phone = DOM.phoneInput ? DOM.phoneInput.value.trim() : "";
+                    if (!/^(0|\+254)7[0-9]{8}$/.test(phone)) throw new Error("Invalid phone number.");
+                    formData.set("phone_number", phone);
+                    UI.closeAnonymousPaymentModal();
+                    // ✅ FIX: Provide immediate feedback BEFORE making the async request.
+                    UI.showAlert("Sending payment request...", "info");
+                }
+        
+                UI.showProcessing("Processing request...");
+                const response = await fetch("/submit-humanize-task", { method: "POST", body: formData });
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.message || "Error submitting your request.");
+
+                // ✅ FIX: Provide specific success feedback after the server confirms.
+                if (AppState.isLoggedIn) {
+                     UI.showAlert("Task submitted successfully! Your text is being humanized.", "success");
+                } else {
+                     UI.showAlert("STK push sent! Please complete payment on your phone.", "success");
+                }
+                
+                AppState.transactionId = data.transaction_id;
+                Actions.startPolling();
+
+            } catch (err) {
+                UI.showAlert(err.message || "Submission failed", "danger");
+                UI.hideProcessing();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.innerHTML = originalButtonText;
+                    submitBtn.disabled = false;
+                }
+            }
+          },
+
+      checkStatus: async () => {
+        if (!AppState.transactionId) return;
         try {
-          const response = await fetch(`/get_mpesa_status/${AppState.transactionId}`);
+          const response = await fetch(`/get_humanization_status/${AppState.transactionId}`);
+          if (!response.ok) {
+            if (response.status === 404) {
+              AppState.pollingRetries++;
+              if (AppState.pollingRetries > 10) {
+                throw new Error("Task could not be found. Please contact support.");
+              }
+              console.warn(`Task not found yet (attempt ${AppState.pollingRetries}), retrying...`);
+              return;
+            }
+            throw new Error("Server returned an error.");
+          }
+          AppState.pollingRetries = 0;
           const data = await response.json();
-          if (data.status === "complete") {
-            clearInterval(AppState.pollingInterval);
-            AppState.isPolling = false;
-            UI.showAlert("Payment successful! Humanizing your text...", "success");
-            DOM.submitPaymentBtn.disabled = false;
-            DOM.submitPaymentBtn.innerHTML = "Pay via M-Pesa";
-            humanizer.handleHumanize();
-          } else if (data.status === "failed") {
-            clearInterval(AppState.pollingInterval);
-            AppState.isPolling = false;
-            UI.showAlert(data.error || "Payment failed. Please try again.", "danger");
-            DOM.submitPaymentBtn.disabled = false;
-            DOM.submitPaymentBtn.innerHTML = "Pay via M-Pesa";
+          if (data.status === "complete" || data.status === "download_ready") {
+            Actions.stopPolling();
+            UI.renderOutput(data);
+            if (data.diff_data && data.diff_data.refund_info) {
+              UI.showAlert(data.diff_data.refund_info, "info");
+            } else {
+              UI.showAlert("Task complete!", "success");
+            }
+          } else if (data.status === "humanization_failed") {
+            Actions.stopPolling();
+            UI.showAlert(data.message || "An unexpected error occurred. Please try again.", "danger");
+            UI.resetSelections();
           }
         } catch (err) {
-          clearInterval(AppState.pollingInterval);
-          AppState.isPolling = false;
-          UI.showAlert(err.message || "An error occurred.", "danger");
-          DOM.submitPaymentBtn.disabled = false;
-          DOM.submitPaymentBtn.innerHTML = "Pay via M-Pesa";
+          Actions.stopPolling();
+          UI.showAlert(err.message || "Error checking status.", "danger");
         }
       },
+
+      startPolling: () => {
+        if (AppState.isPolling) return;
+        AppState.pollingRetries = 0;
+        AppState.pollingInterval = setInterval(Actions.checkStatus, POLLING_RATE);
+        AppState.isPolling = true;
+      },
+
+      stopPolling: () => {
+        clearInterval(AppState.pollingInterval);
+        AppState.isPolling = false;
+        UI.hideProcessing();
+      }
     };
 
-    function setupEventListeners() {
-      if (DOM.inputText) on(DOM.inputText, "input", UI.updateWordCountAndCost);
-      if (DOM.humanizeBtn) on(DOM.humanizeBtn, "click", mpesa.openModal);
-      if (DOM.closeMpesaModalBtn) on(DOM.closeMpesaModalBtn, "click", mpesa.closeModal);
-      if (DOM.submitPaymentBtn) on(DOM.submitPaymentBtn, "click", mpesa.handlePayment);
-      if (DOM.copyBtn) on(DOM.copyBtn, "click", () => copyToClipboard("humanized_output_display"));
-      if (DOM.resetBtn) on(DOM.resetBtn, "click", () => {
-        if (DOM.inputText) DOM.inputText.value = "";
-        UI.updateWordCountAndCost();
-        UI.showOutputSection(false);
-        typeAnimation.reset();
+    function setupPopup(button, popup, display, radios) {
+      if (!button || !popup || !display || !radios) return;
+      on(button, "click", (e) => {
+        e.stopPropagation();
+        const isHidden = popup.classList.contains("hidden");
+        qsa(".popup-menu").forEach(p => p.classList.add("hidden"));
+        if (isHidden) {
+          popup.classList.remove("hidden");
+        }
       });
-      qsa(".popup-btn").forEach(btn => on(btn, "click", () => {
-        const popupId = btn.id.replace("Btn", "Popup");
-        const popup = qs(`#${popupId}`);
-        if (popup) popup.classList.toggle("hidden");
-      }));
-      qsa(".option-btn").forEach(btn => on(btn, "click", (e) => {
-        const selectedRadio = qs(`#${e.target.dataset.radioId}`);
-        if (selectedRadio) {
-          selectedRadio.checked = true;
-          const popup = e.target.closest(".popup");
-          if (popup) popup.classList.add("hidden");
-          if (e.target.dataset.displayId && e.target.dataset.value) {
-            const displayEl = qs(`#${e.target.dataset.displayId}`);
-            if (displayEl) displayEl.textContent = e.target.dataset.value;
-          }
-          UI.updateWordCountAndCost();
-          UI.updateFormattingOptions();
+      radios.forEach(radio => on(radio, "change", () => {
+        display.textContent = radio.nextElementSibling.textContent;
+        button.classList.remove("placeholder");
+        popup.classList.add("hidden");
+        UI.updateFormattingOptions();
+        UI.updateWordCountAndCost();
+        if (radio.name === "humanizer_mode") {
+          if (radio.value === "document_formatter") DOM.humanizeBtn.textContent = "Process"; else DOM.humanizeBtn.textContent = "Humanize";
         }
       }));
-      if (DOM.toggleReferencesBtn) on(DOM.toggleReferencesBtn, "click", () => {
-        if (DOM.referencesSection) DOM.referencesSection.classList.toggle("hidden");
-      });
-      document.addEventListener("click", (e) => {
-        if (!e.target.closest("#modeBtn") && !e.target.closest("#modePopup")) if (DOM.modePopup) DOM.modePopup.classList.add("hidden");
-        if (!e.target.closest("#formatBtn") && !e.target.closest("#formatPopup")) if (DOM.formatPopup) DOM.formatPopup.classList.add("hidden");
-        if (!e.target.closest("#dialectBtn") && !e.target.closest("#dialectPopup")) if (DOM.dialectPopup) DOM.dialectPopup.classList.add("hidden");
-      });
-      qsa('input[name="humanizer_mode"]').forEach(radio => on(radio, "change", UI.updateFormattingOptions));
-      qsa('input[name="output_format"]').forEach(radio => on(radio, "change", UI.updateFormattingOptions));
     }
 
+    // Initialize wiring (event listeners)
     function init() {
-      setupEventListeners();
-      UI.updateWordCountAndCost();
-      UI.updateFormattingOptions();
+      if (!DOM.humanizeForm) return;
+
+      if (DOM.humanizeBtn) DOM.humanizeBtn.disabled = false;
+      if (DOM.inputText) on(DOM.inputText, "input", UI.updateWordCountAndCost);
+      if (DOM.copyBtn) on(DOM.copyBtn, "click", () => copyToClipboard("humanized_output_display"));
+      if (DOM.resetBtn) on(DOM.resetBtn, "click", UI.resetSelections);
+      
+      if (DOM.humanizeBtn) on(DOM.humanizeBtn, "click", (e) => {
+          e.preventDefault();
+          AppState.isLoggedIn ? Actions.submitHumanization() : UI.openAnonymousPaymentModal();
+      });
+      
+      if (DOM.submitPaymentBtn) on(DOM.submitPaymentBtn, "click", (e) => {
+          e.preventDefault();
+          Actions.submitHumanization();
+      });
+
+      if (DOM.closeMpesaModalBtn) on(DOM.closeMpesaModalBtn, "click", UI.closeAnonymousPaymentModal);
+
+      if (DOM.toggleReferencesBtn && DOM.referencesSection) {
+        on(DOM.toggleReferencesBtn, "click", (e) => { e.preventDefault(); DOM.referencesSection.classList.toggle("hidden"); });
+      }
+
+      setupPopup(DOM.modeBtn, DOM.modePopup, DOM.modeDisplay, DOM.humanizerModeRadios);
+      setupPopup(DOM.formatBtn, DOM.formatPopup, DOM.formatDisplay, DOM.outputFormatRadios);
+      setupPopup(DOM.dialectBtn, DOM.dialectPopup, DOM.dialectDisplay, DOM.englishDialectRadios);
+
+      on(document.body, "click", (e) => { if (!e.target.closest(".popup-control")) qsa(".popup-menu").forEach(p => p.classList.add("hidden")); });
+
+      UI.resetSelections();
+
       const textToHumanize = localStorage.getItem("textToHumanize");
-      if (textToHumanize && DOM.inputText) {
-        DOM.inputText.value = textToHumanize;
+      if (textToHumanize) {
+        if (DOM.inputText) DOM.inputText.value = textToHumanize;
         UI.updateWordCountAndCost();
         localStorage.removeItem("textToHumanize");
       }
@@ -1415,3 +1356,5 @@
   });
 
 })();
+
+
