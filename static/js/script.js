@@ -1358,88 +1358,61 @@
 })();
 
 // =============================
-// Auto Top-Up Button Click Logic
+// Auto Top-Up Button Click Logic (Updated)
 // =============================
-document.addEventListener("DOMContentLoaded", function () {
-    const TOP_UP_HEADER_BTN_SELECTOR = "#topUpBtn";      // opens the modal
-    const CHAT_CONTAINER_SELECTOR = "#chat-log";         // correct chat container
-    const ALERT_CONTAINER_SELECTOR = "#js-alert-container"; // alerts may render here
-
+(function() {
     let autoClickTimer = null;
+    const topUpBtn = document.getElementById('topUpBtn');
 
-    function clearAutoClickTimer() {
-        if (autoClickTimer) {
-            clearTimeout(autoClickTimer);
-            autoClickTimer = null;
+    function triggerTopUpAutoClick() {
+        if (topUpBtn && !autoClickTimer) {
+            autoClickTimer = setTimeout(() => {
+                if (topUpBtn && document.body.contains(topUpBtn)) {
+                    topUpBtn.click();
+                    console.log("[AutoTopUp] Auto-clicked Top Up button after 2.5 seconds.");
+                }
+                autoClickTimer = null;
+            }, 2500); // ✅ 2.5 seconds delay
         }
     }
 
-    function startAutoClickTimer() {
-        clearAutoClickTimer();
-        autoClickTimer = setTimeout(() => {
-            const topUpOpenBtn = document.querySelector(TOP_UP_HEADER_BTN_SELECTOR);
-            if (topUpOpenBtn && !topUpOpenBtn.disabled) {
-                console.log("[AutoTopUp] Auto-clicking Top Up header button after 4s...");
-                topUpOpenBtn.click(); // open the modal (do NOT auto-submit)
+    if (topUpBtn) {
+        topUpBtn.addEventListener('click', () => {
+            if (autoClickTimer) {
+                clearTimeout(autoClickTimer);
+                autoClickTimer = null;
+                console.log("[AutoTopUp] User clicked Top Up manually, auto-click canceled.");
             }
-        }, 4000);
-    }
-
-    // Cancel if user clicks Top Up manually
-    const headerTopUpBtn = document.querySelector(TOP_UP_HEADER_BTN_SELECTOR);
-    if (headerTopUpBtn) {
-        headerTopUpBtn.addEventListener("click", () => {
-            console.log("[AutoTopUp] User clicked Top Up manually — cancel timer.");
-            clearAutoClickTimer();
         });
     }
 
-    // Observe the chat container for an "Insufficient funds" message
-    const chatContainer = document.querySelector(CHAT_CONTAINER_SELECTOR);
-    if (chatContainer) {
-        const chatObserver = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
+    const chatLog = document.getElementById('chat-log');
+    if (chatLog) {
+        const observer = new MutationObserver((mutations) => {
+            for (let mutation of mutations) {
+                for (let node of mutation.addedNodes) {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        const text = node.textContent || "";
-                        if (/insufficient\s+funds/i.test(text)) {
-                            console.log("[AutoTopUp] Detected 'Insufficient funds' in chat. Starting 4s timer...");
-                            startAutoClickTimer();
-                            return;
+                        const text = node.innerText || '';
+                        if (text.trim() === 'Insufficient funds. Please top up your wallet.') {
+                            console.log("[AutoTopUp] Detected exact insufficient funds message in chat.");
+                            triggerTopUpAutoClick();
                         }
                     }
                 }
             }
         });
-        chatObserver.observe(chatContainer, { childList: true, subtree: true });
+        observer.observe(chatLog, { childList: true, subtree: true });
     }
 
-    // Hook into global showAlert to catch alerts (many errors render as alerts, not chat)
-    const tryHookShowAlert = () => {
-        try {
-            if (window.App && typeof window.App.showAlert === "function" && !window.App.__autoTopUpHooked) {
-                const originalShowAlert = window.App.showAlert;
-                window.App.showAlert = function(message, type, duration) {
-                    try {
-                        const msgStr = (typeof message === "string") ? message : (message?.toString?.() || "");
-                        if (/insufficient\s+funds/i.test(msgStr)) {
-                            console.log("[AutoTopUp] Detected 'Insufficient funds' via showAlert. Starting 4s timer...");
-                            startAutoClickTimer();
-                        }
-                    } catch (e) {
-                        // no-op
-                    }
-                    return originalShowAlert.apply(this, arguments);
-                };
-                window.App.__autoTopUpHooked = true;
-                console.log("[AutoTopUp] Hooked window.App.showAlert");
+    const originalShowAlert = window.App && window.App.showAlert;
+    if (originalShowAlert) {
+        window.App.showAlert = function(message, type) {
+            if (message.trim() === 'Insufficient funds. Please top up your wallet.') {
+                console.log("[AutoTopUp] Detected exact insufficient funds alert.");
+                triggerTopUpAutoClick();
             }
-        } catch (e) {
-            // ignore
-        }
-    };
+            return originalShowAlert.apply(this, arguments);
+        };
+    }
+})();
 
-    // Attempt hook immediately and again after a tick to ensure App is initialized
-    tryHookShowAlert();
-    setTimeout(tryHookShowAlert, 0);
-});
