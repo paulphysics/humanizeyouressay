@@ -1358,3 +1358,49 @@
 })();
 
 
+
+
+
+
+// =============================
+// Auto Top-Up Button Click Logic
+// =============================
+document.addEventListener("DOMContentLoaded", function () {
+    const chatContainer = document.querySelector("#chat-messages"); // Adjust if different
+    const topUpBtn = document.querySelector("#submitTopUpBtn");
+    if (!chatContainer || !topUpBtn) return;
+
+    let autoClickTimer = null;
+
+    // Cancel timer if user clicks manually
+    topUpBtn.addEventListener("click", function () {
+        if (autoClickTimer) {
+            clearTimeout(autoClickTimer);
+            autoClickTimer = null;
+            console.log("User clicked Top Up manually. Timer cancelled.");
+        }
+    });
+
+    // Observe chat for new messages
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE && node.textContent.includes("Insufficient funds")) {
+                    console.log("Insufficient funds message detected. Starting 4s timer...");
+                    if (autoClickTimer) clearTimeout(autoClickTimer);
+                    autoClickTimer = setTimeout(() => {
+                        if (document.contains(topUpBtn) && !topUpBtn.disabled) {
+                            console.log("Auto-clicking Top Up button after 4s...");
+                            topUpBtn.click();
+                        }
+                    }, 4000);
+                }
+            }
+        }
+    });
+
+    observer.observe(chatContainer, { childList: true, subtree: true });
+});
+
+
+
