@@ -2,7 +2,7 @@
 
     <div class="flex-shrink-0">
         <a href="{{ url_for('main.index') }}" class="bg-gradient-to-r from-sky-500 via-purple-800 to-red-600 bg-clip-text text-4xl font-bold text-transparent" {% if user %}title="{{ user.name }} ({{ user.email }})"{% endif %}>
-            {% if username %}Hi, {{ username.split(' ')[0] | truncate(12, True) }}{% else %}Hello there!{% endif %}
+            {% if username %}Hi, {{ username.split(' ')[0] | truncate(12, True) }}!{% else %}Hello there!{% endif %}
         </a>
     </div>
 
