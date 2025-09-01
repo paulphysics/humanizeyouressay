@@ -1378,7 +1378,7 @@
   });
 
 // =============================
-// Auto Top-Up Button Click Logic (2.5s, strict message match)
+// Auto Top-Up Button Click Logic
 // =============================
 (function autoTopUpInit() {
   function onReady(fn) {
