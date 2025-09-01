@@ -449,6 +449,9 @@
             messageBubble.innerHTML = markdownToHtml(data.response);
             showProcessing(false);
 
+            / ✅ FIX: Add this line to render the action buttons
+            addMessageActions(messageContainer, data.response);
+
             if (data.conversation_title && DOM.conversationList) {
               const convItem = DOM.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
               if (convItem) {
