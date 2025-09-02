@@ -229,9 +229,6 @@ def referrals_page():
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
     
-    # Query for users who were referred by the current user
-    referred_users = User.query.filter_by(referred_by=user.id).order_by(User.created_at.desc()).all()
-    
     # Calculate total referral earnings from commission transactions
     total_earnings = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.wallet_id == user.wallet.id,
@@ -246,14 +243,27 @@ def referrals_page():
 
     total_earnings += signup_bonuses
 
+    # Get referral counts for each level
+    referral_counts = {}
+    for i in range(5):
+        level = i + 1
+        count = User.query.filter(User.upline.like(f"%{user.id}%")).all()
+        level_count = 0
+        for referred_user in count:
+            if referred_user.upline:
+                upline_ids = referred_user.upline.split(',')
+                if len(upline_ids) > i and upline_ids[i] == str(user.id):
+                    level_count += 1
+        referral_counts[level] = level_count
+
     return render_template(
         "referrals.html",
         user=user,
         username=username,
         wallet_balance=user.wallet.balance,
-        referred_users=referred_users,
         total_earnings=total_earnings,
-        is_admin=user.is_admin
+        is_admin=user.is_admin,
+        referral_counts=referral_counts
     )
 # --- NEW ROUTE END ---
 
