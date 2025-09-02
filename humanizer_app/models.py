@@ -19,6 +19,7 @@ class User(db.Model):
     # --- REFERRAL SYSTEM ADDITIONS START ---
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
     referred_by = db.Column(db.String(128), db.ForeignKey('user.id'), nullable=True)
+    upline = db.Column(db.String, nullable=True)  # Stores comma-separated list of referrer IDs for MLM
     # --- REFERRAL SYSTEM ADDITIONS END ---
     
     tasks = db.relationship('Task', back_populates='user', lazy=True)
