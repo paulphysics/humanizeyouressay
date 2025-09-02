@@ -168,7 +168,16 @@
 
         <!-- Leaderboard Section -->
         <div class="bg-white p-6 rounded-lg shadow-md mt-8">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Top Performers Leaderboard</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold text-gray-800">Top Performers Leaderboard</h2>
+                <form method="get" class="flex space-x-2">
+                    <select name="filter" onchange="this.form.submit()" class="border rounded px-3 py-2">
+                        <option value="all" {% if leaderboard_filter == 'all' %}selected{% endif %}>All Time</option>
+                        <option value="month" {% if leaderboard_filter == 'month' %}selected{% endif %}>This Month</option>
+                    </select>
+                </form>
+            </div>
+
             <p class="text-gray-600 mb-4">Your current rank: <strong>{{ user_rank if user_rank else 'Not Ranked' }}</strong></p>
 
             <div class="overflow-x-auto">
@@ -195,15 +204,15 @@
             <!-- Pagination -->
             <div class="flex justify-center mt-4 space-x-2">
                 {% if page > 1 %}
-                <a href="?page={{ page - 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
+                <a href="?page={{ page - 1 }}&filter={{ leaderboard_filter }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
                 {% endif %}
 
                 {% for p in range(1, total_pages + 1) %}
-                <a href="?page={{ p }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
+                <a href="?page={{ p }}&filter={{ leaderboard_filter }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
                 {% endfor %}
 
                 {% if page < total_pages %}
-                <a href="?page={{ page + 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
+                <a href="?page={{ page + 1 }}&filter={{ leaderboard_filter }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
                 {% endif %}
             </div>
         </div>
