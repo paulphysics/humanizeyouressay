@@ -229,19 +229,25 @@ def referrals_page():
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
 
-    # Calculate total referral earnings from commission transactions
-    total_earnings = db.session.query(func.sum(Transaction.amount)).filter(
-        Transaction.wallet_id == user.wallet.id,
-        Transaction.transaction_type == 'referral_commission'
-    ).scalar() or 0.0
+    # Lifetime earnings (transactions, including bonuses)
+    lifetime_earnings = (
+        db.session.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.wallet_id == user.wallet.id,
+            Transaction.transaction_type.in_(["referral_commission", "referral_signup_bonus"])
+        )
+        .scalar()
+        or 0.0
+    )
 
-    # Include signup bonuses if present
-    signup_bonuses = db.session.query(func.sum(Transaction.amount)).filter(
-        Transaction.wallet_id == user.wallet.id,
-        Transaction.transaction_type == 'referral_signup_bonus'
-    ).scalar() or 0.0
+    # Withdrawable balance (ledger only)
+    withdrawable_balance = (
+        db.session.query(func.sum(ReferralLedger.amount))
+        .filter_by(user_id=user.id)
+        .scalar()
+        or 0.0
+    )
 
-    total_earnings += signup_bonuses
 
     # Get referral counts for each level
     referral_counts = {}
@@ -268,10 +274,11 @@ def referrals_page():
         user=user,
         username=username,
         wallet_balance=user.wallet.balance,
-        total_earnings=total_earnings,
+        lifetime_earnings=lifetime_earnings,
+        withdrawable_balance=withdrawable_balance,
         is_admin=user.is_admin,
         referral_counts=referral_counts,
-        referrals=referrals
+        referrals=referrals,
     )
 
 @main_bp.route("/playground_chat", methods=['POST'])
