@@ -48,33 +48,33 @@
 
             <!-- Withdrawable Balance -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
-                   <h3 class="text-lg font-semibold text-gray-700 flex items-center relative">
-                       Withdrawable Balance 💸
-                       <span class="ml-2 relative flex items-center group">
-                           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 cursor-pointer"
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                               <circle cx="12" cy="12" r="10" stroke-width="2"/>
-                               <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
-                               <circle cx="12" cy="8" r="1" fill="currentColor"/>
-                           </svg>
-                           <span class="absolute hidden group-hover:block bg-gray-800 text-white text-sm rounded py-1 px-2 -top-10 left-0 shadow-lg whitespace-nowrap">
-                               The portion of referral earnings currently available for withdrawal.
-                           </span>
-                       </span>
-                   </h3>
-                   <p class="text-4xl font-bold text-green-600">
-                       KSh {{ "%.2f"|format(withdrawable_balance) }}
-                   </p>
-               
-                   {% if withdrawable_balance >= 8 %}
-                   <form action="{{ url_for('main.withdraw_funds') }}" method="POST" class="mt-4">
-                       <input type="hidden" name="amount" value="{{ withdrawable_balance }}">
-                       <button type="submit"
-                               class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition">
-                           Withdraw
-                       </button>
-                   </form>
-                   {% endif %}
+                <h3 class="text-lg font-semibold text-gray-700 flex items-center relative">
+                    Withdrawable Balance 💸
+                    <span class="ml-2 relative flex items-center group">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 cursor-pointer"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                            <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
+                            <circle cx="12" cy="8" r="1" fill="currentColor"/>
+                        </svg>
+                        <span class="absolute hidden group-hover:block bg-gray-800 text-white text-sm rounded py-1 px-2 -top-10 left-0 shadow-lg whitespace-nowrap">
+                            The portion of referral earnings currently available for withdrawal.
+                        </span>
+                    </span>
+                </h3>
+                <p class="text-4xl font-bold text-green-600">
+                    KSh {{ "%.2f"|format(withdrawable_balance) }}
+                </p>
+
+                {% if withdrawable_balance >= 8 %}
+                <form action="{{ url_for('main.withdraw_funds') }}" method="POST" class="mt-4">
+                    <input type="hidden" name="amount" value="{{ withdrawable_balance }}">
+                    <button type="submit"
+                            class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition">
+                        Withdraw
+                    </button>
+                </form>
+                {% endif %}
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
@@ -165,47 +165,48 @@
             <p class="text-gray-600">You haven’t referred anyone yet.</p>
             {% endif %}
         </div>
-         <!-- Leaderboard Section -->
-          <div class="bg-white p-6 rounded-lg shadow-md mt-8">
-              <h2 class="text-2xl font-semibold text-gray-800 mb-4">Top Performers Leaderboard</h2>
-              <p class="text-gray-600 mb-4">Your current rank: <strong>{{ user_rank if user_rank else 'Not Ranked' }}</strong></p>
-          
-              <div class="overflow-x-auto">
-                  <table class="min-w-full bg-white border rounded-lg">
-                      <thead class="bg-gray-100">
-                          <tr>
-                              <th class="py-2 px-4 border-b text-left">Rank</th>
-                              <th class="py-2 px-4 border-b text-left">User</th>
-                              <th class="py-2 px-4 border-b text-left">Total Earnings (KSh)</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {% for rank, username, earnings in leaderboard %}
-                          <tr class="hover:bg-gray-50 {% if rank == user_rank %}bg-green-100{% endif %}">
-                              <td class="py-2 px-4 border-b">{{ rank }}</td>
-                              <td class="py-2 px-4 border-b">{{ username }}</td>
-                              <td class="py-2 px-4 border-b">{{ "%.2f"|format(earnings) }}</td>
-                          </tr>
-                          {% endfor %}
-                      </tbody>
-                  </table>
-              </div>
-          
-              <!-- Pagination -->
-              <div class="flex justify-center mt-4 space-x-2">
-                  {% if page > 1 %}
-                  <a href="?page={{ page - 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
-                  {% endif %}
-          
-                  {% for p in range(1, total_pages + 1) %}
-                  <a href="?page={{ p }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
-                  {% endfor %}
-          
-                  {% if page < total_pages %}
-                  <a href="?page={{ page + 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
-                  {% endif %}
-              </div>
-          </div>
+
+        <!-- Leaderboard Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md mt-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Top Performers Leaderboard</h2>
+            <p class="text-gray-600 mb-4">Your current rank: <strong>{{ user_rank if user_rank else 'Not Ranked' }}</strong></p>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border rounded-lg">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="py-2 px-4 border-b text-left">Rank</th>
+                            <th class="py-2 px-4 border-b text-left">User</th>
+                            <th class="py-2 px-4 border-b text-left">Total Earnings (KSh)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rank, username, earnings in leaderboard %}
+                        <tr class="hover:bg-gray-50 {% if rank == user_rank %}bg-green-100{% endif %}">
+                            <td class="py-2 px-4 border-b">{{ rank }}</td>
+                            <td class="py-2 px-4 border-b">{{ username }}</td>
+                            <td class="py-2 px-4 border-b">{{ "%.2f"|format(earnings) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="flex justify-center mt-4 space-x-2">
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
+                {% endif %}
+
+                {% for p in range(1, total_pages + 1) %}
+                <a href="?page={{ p }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </main>
 
