@@ -49,17 +49,20 @@ def authorize():
             new_user = User(id=uid, email=email, name=name)
             
             # --- REFERRAL LOGIC ---
-            # 1. Generate a unique referral code for the new user
             new_user.referral_code = f"REF-{str(uuid.uuid4())[:8].upper()}"
 
-            # 2. Check if a referral code was provided and apply it
             if referral_code:
                 referrer = User.query.filter_by(referral_code=referral_code).first()
                 if referrer:
                     new_user.referred_by = referrer.id
-                    # --- MODIFICATION START ---
-                    # The initial signup bonus for the referrer has been removed as requested.
-                    # --- MODIFICATION END ---
+                    
+                    # Construct the upline
+                    upline = [referrer.id]
+                    if referrer.upline:
+                        upline.extend(referrer.upline.split(','))
+                    
+                    # Limit to 4 levels so the direct referrer is the 5th
+                    new_user.upline = ",".join(upline[:4])
 
             new_wallet = Wallet(user=new_user, balance=0.0)
             db.session.add(new_user)
@@ -109,7 +112,6 @@ def login():
 @auth_bp.route('/signup')
 def signup():
     return redirect(url_for('auth.auth_page'))
-
 
 @auth_bp.route('/logout')
 def logout():
