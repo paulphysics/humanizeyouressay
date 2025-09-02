@@ -1,8 +1,8 @@
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash
 from firebase_admin import auth
 from functools import wraps
 from .extensions import db
-from .models import User, Wallet, Transaction
+from .models import User, Wallet
 import os
 import uuid
 
@@ -18,11 +18,12 @@ def auth_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
 @auth_bp.route('/auth', methods=['POST'])
 def authorize():
     """
     Receives an ID token from the client, verifies it, creates/updates a local user
-    and wallet, captures the user's name, and creates a server-side session.
+    and wallet, captures the user's name and phone number, and creates a server-side session.
     Also handles referral codes for new users.
     """
     token = request.headers.get('Authorization')
@@ -30,9 +31,10 @@ def authorize():
         return "Unauthorized", 401
 
     id_token = token.split('Bearer ')[1]
-    
+
     data = request.get_json()
     referral_code = data.get('referral_code') if data else None
+    phone_number = data.get('phone_number') if data else None
 
     try:
         decoded_token = auth.verify_id_token(id_token, check_revoked=True)
@@ -46,8 +48,16 @@ def authorize():
             if User.query.filter_by(email=email).first():
                 return "An account with a different sign-in method already exists for this email.", 409
 
-            new_user = User(id=uid, email=email, name=name)
-            
+            # Phone number is required for withdrawals
+            if not phone_number:
+                return "Phone number is required to create an account.", 400
+
+            # Ensure phone number is unique
+            if User.query.filter_by(phone_number=phone_number).first():
+                return "This phone number is already registered.", 409
+
+            new_user = User(id=uid, email=email, name=name, phone_number=phone_number)
+
             # --- REFERRAL LOGIC ---
             new_user.referral_code = f"REF-{str(uuid.uuid4())[:8].upper()}"
 
@@ -55,12 +65,12 @@ def authorize():
                 referrer = User.query.filter_by(referral_code=referral_code).first()
                 if referrer:
                     new_user.referred_by = referrer.id
-                    
+
                     # Construct the upline
                     upline = [referrer.id]
                     if referrer.upline:
                         upline.extend(referrer.upline.split(','))
-                    
+
                     # Limit to 4 levels so the direct referrer is the 5th
                     new_user.upline = ",".join(upline[:4])
 
@@ -70,9 +80,12 @@ def authorize():
             db.session.commit()
             user = new_user
         else:
+            # Update name if changed
             if name and user.name != name:
                 user.name = name
                 db.session.commit()
+
+            # Do NOT update phone number after signup to prevent fraud
 
         session['user'] = {
             'uid': user.id,
@@ -80,12 +93,13 @@ def authorize():
             'name': user.name
         }
         session.permanent = True
-        
+
         return jsonify({"message": "Login successful", "is_admin": user.is_admin}), 200
 
     except Exception as e:
         print(f"An error occurred during authorization: {e}")
         return f"An error occurred: {e}", 500
+
 
 # --- Public Routes for Auth Pages ---
 
@@ -93,7 +107,7 @@ def authorize():
 def auth_page():
     if 'user' in session:
         return redirect(url_for('main.home'))
-    
+
     firebase_config = {
         "apiKey": os.getenv("FIREBASE_API_KEY"),
         "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
@@ -105,13 +119,16 @@ def auth_page():
     }
     return render_template('auth.html', firebase_config=firebase_config)
 
+
 @auth_bp.route('/login')
 def login():
     return redirect(url_for('auth.auth_page'))
 
+
 @auth_bp.route('/signup')
 def signup():
     return redirect(url_for('auth.auth_page'))
+
 
 @auth_bp.route('/logout')
 def logout():
