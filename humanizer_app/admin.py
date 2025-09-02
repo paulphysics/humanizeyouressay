@@ -1,4 +1,3 @@
-# humanizer_app/admin.py
 from flask import session, redirect, url_for, request, flash, Response
 from flask_admin import Admin, AdminIndexView, expose
 from flask_admin.contrib.sqla import ModelView
@@ -14,7 +13,7 @@ from datetime import date, datetime, timedelta
 import csv
 import io
 
-from .models import User, Task, Wallet, Transaction, Expense
+from .models import User, Task, Wallet, Transaction, Expense, ReferralWithdrawal, ReferralLedger
 from .extensions import db
 
 NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
@@ -104,9 +103,18 @@ class MyAdminIndexView(AdminIndexView):
                            completed_tasks_in_range=completed_tasks_in_range,
                            chart_labels=chart_labels, revenue_data=revenue_data, tasks_data=tasks_data)
 
+    # ✅ NEW: MLM Leaderboard
+    @expose('/leaderboard')
+    def leaderboard(self):
+        leaderboard_data = db.session.query(
+            User.id, User.email, func.sum(ReferralLedger.amount).label('total_earnings')
+        ).join(ReferralLedger).group_by(User.id).order_by(func.sum(ReferralLedger.amount).desc()).all()
+        
+        leaderboard_list = [(i+1, email, total) for i, (uid, email, total) in enumerate(leaderboard_data)]
+        return self.render('admin/leaderboard.html', leaderboard=leaderboard_list)
+
     @expose('/export-corpus')
     def export_corpus(self):
-        # +++ START OF MODIFIED CODE +++
         start_date_str = request.args.get('start_date', (date.today() - timedelta(days=6)).strftime('%Y-%m-%d'))
         end_date_str = request.args.get('end_date', date.today().strftime('%Y-%m-%d'))
         
@@ -140,7 +148,6 @@ class MyAdminIndexView(AdminIndexView):
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment;filename={filename}"}
         )
-        # +++ END OF MODIFIED CODE +++
 
 # --- BASE AUTHENTICATED VIEW ---
 class AuthenticatedModelView(ModelView):
@@ -152,6 +159,38 @@ class AuthenticatedModelView(ModelView):
     def _handle_view(self, name, **kwargs):
         if not self.is_accessible():
             return redirect(url_for('main.index'))
+
+# --- REFERRAL WITHDRAWAL ADMIN VIEW ---
+class ReferralWithdrawalAdminView(AuthenticatedModelView):
+    column_list = ['user.email', 'amount', 'status', 'created_at']
+    column_labels = {'user.email': 'User', 'created_at': 'Requested At'}
+    column_formatters = {'created_at': _date_formatter}
+    column_filters = ['status']
+    can_create = False; can_edit = True; can_delete = False
+
+    @action('approve', 'Approve Withdrawal', 'Are you sure?')
+    def action_approve(self, ids):
+        try:
+            withdrawals = ReferralWithdrawal.query.filter(ReferralWithdrawal.id.in_(ids)).all()
+            for w in withdrawals:
+                w.status = 'approved'
+            db.session.commit()
+            flash(f'Approved {len(withdrawals)} withdrawal(s).', 'success')
+        except Exception as ex:
+            db.session.rollback()
+            flash(f'Failed to approve. Error: {ex}', 'error')
+
+    @action('reject', 'Reject Withdrawal', 'Are you sure?')
+    def action_reject(self, ids):
+        try:
+            withdrawals = ReferralWithdrawal.query.filter(ReferralWithdrawal.id.in_(ids)).all()
+            for w in withdrawals:
+                w.status = 'rejected'
+            db.session.commit()
+            flash(f'Rejected {len(withdrawals)} withdrawal(s).', 'warning')
+        except Exception as ex:
+            db.session.rollback()
+            flash(f'Failed to reject. Error: {ex}', 'error')
 
 # --- OTHER MODEL VIEWS ---
 class TaskAdminView(AuthenticatedModelView):
@@ -195,27 +234,20 @@ class UserAdminView(AuthenticatedModelView):
     
         if form.validate_on_submit():
             amount = form.amount.data
-            
-            # --- Start of New Logic ---
             try:
                 if not recipient.wallet:
                     flash(f'Error: User {recipient.email} does not have a wallet.', 'error')
                     return redirect(url_for('.index_view'))
     
-                # 1. Update the user's wallet balance
                 recipient.wallet.balance += amount
-    
-                # 2. Create a new transaction record for the credit
                 admin_credit_transaction = Transaction(
                     wallet_id=recipient.wallet.id,
                     amount=amount,
-                    transaction_type='admin_credit',  # New transaction type
+                    transaction_type='admin_credit',
                     description=f'Admin credit by {session["user"]["email"]}.',
                     is_reversed=False
                 )
                 db.session.add(admin_credit_transaction)
-    
-                # 3. Commit both changes to the database at once
                 db.session.commit()
                 
                 flash(f'Successfully transferred KSh {amount:.2f} to {recipient.email}.', 'success')
@@ -223,7 +255,6 @@ class UserAdminView(AuthenticatedModelView):
             except Exception as e:
                 db.session.rollback()
                 flash(f'An error occurred: {e}', 'error')
-            # --- End of New Logic ---
                 
             return redirect(url_for('.index_view'))
     
@@ -236,7 +267,7 @@ class UserAdminView(AuthenticatedModelView):
 
 class TransactionAdminView(AuthenticatedModelView):
     column_list = ['wallet.user.email', 'amount', 'transaction_type', 'is_reversed', 'created_at', 'description']
-    column_formatters = { 'created_at': _date_formatter }
+    column_formatters = {'created_at': _date_formatter}
     column_labels = {'wallet.user.email': 'User', 'is_reversed': 'Reversed?', 'created_at': 'Date (EAT)'}
     column_filters = [
         FilterInList(Transaction.transaction_type, 'Type', options=[('top-up', 'Top-Up'), ('humanize_fee', 'Humanize Fee')]),
@@ -278,4 +309,5 @@ def init_admin(app, db):
     admin.add_view(TaskAdminView(Task, db.session, name='All Tasks', endpoint='all-tasks'))
     admin.add_view(UserAdminView(User, db.session))
     admin.add_view(TransactionAdminView(Transaction, db.session))
+    admin.add_view(ReferralWithdrawalAdminView(ReferralWithdrawal, db.session, name='Referral Withdrawals'))
     admin.add_view(ExpenseAdminView(Expense, db.session, name='Expenses'))
