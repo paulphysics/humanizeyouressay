@@ -223,14 +223,12 @@ def transaction_history():
 @auth_required
 def referrals_page():
     """
-    Displays the user's referral statistics, including per-level counts,
-    total earnings, direct referrals with pagination, and the MLM leaderboard
-    with filters (This Month / All Time).
+    Displays the user's referral statistics, leaderboard, and direct referrals.
     """
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
 
-    # Lifetime earnings (transactions, including bonuses)
+    # Lifetime earnings
     lifetime_earnings = (
         db.session.query(func.sum(Transaction.amount))
         .filter(
@@ -241,7 +239,7 @@ def referrals_page():
         or 0.0
     )
 
-    # Withdrawable balance (ledger only)
+    # Withdrawable balance
     withdrawable_balance = (
         db.session.query(func.sum(ReferralLedger.amount))
         .filter_by(user_id=user.id)
@@ -249,7 +247,7 @@ def referrals_page():
         or 0.0
     )
 
-    # Get referral counts for each level
+    # Referral counts by level
     referral_counts = {}
     for i in range(5):
         level = i + 1
@@ -262,48 +260,55 @@ def referrals_page():
                     level_count += 1
         referral_counts[level] = level_count
 
-    # Direct referrals (Level 1) pagination
+    # Direct referrals with pagination
     page = request.args.get('page', 1, type=int)
     per_page = 10
     referrals = User.query.filter_by(referred_by=user.id).paginate(
         page=page, per_page=per_page, error_out=False
     )
 
-    # ✅ Leaderboard Filter: All Time or This Month
-    leaderboard_filter = request.args.get('filter', 'all')  # default to "all"
-    leaderboard_page = request.args.get('leaderboard_page', 1, type=int)
+    # Leaderboard filter
+    filter_option = request.args.get('filter', 'all')  # 'month' or 'all'
+    leaderboard_page = request.args.get('lb_page', 1, type=int)
     leaderboard_per_page = 20
 
     leaderboard_query = (
         db.session.query(
             User.id,
-            User.username,
-            func.sum(ReferralLedger.amount).label("total_earnings")
+            User.name.label("display_name"),
+            func.sum(Transaction.amount).label("total_earnings")
         )
-        .join(ReferralLedger)
-        .group_by(User.id)
+        .join(Wallet, Wallet.user_id == User.id)
+        .join(Transaction, Transaction.wallet_id == Wallet.id)
+        .filter(Transaction.transaction_type.in_(["referral_commission", "referral_signup_bonus"]))
     )
 
-    if leaderboard_filter == 'month':
-        start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        leaderboard_query = leaderboard_query.filter(ReferralLedger.created_at >= start_of_month)
+    if filter_option == 'month':
+        start_of_month = datetime(datetime.now().year, datetime.now().month, 1)
+        leaderboard_query = leaderboard_query.filter(Transaction.created_at >= start_of_month)
 
-    leaderboard_query = leaderboard_query.order_by(func.sum(ReferralLedger.amount).desc())
+    leaderboard_query = (
+        leaderboard_query
+        .group_by(User.id, User.name)
+        .order_by(func.sum(Transaction.amount).desc())
+    )
 
-    total_records = leaderboard_query.count()
-    leaderboard_data = leaderboard_query.offset((leaderboard_page - 1) * leaderboard_per_page).limit(leaderboard_per_page).all()
+    leaderboard_pagination = leaderboard_query.paginate(
+        page=leaderboard_page, per_page=leaderboard_per_page, error_out=False
+    )
 
-    # Format leaderboard list with correct rank numbers
-    leaderboard_list = [
-        (i + 1 + (leaderboard_page - 1) * leaderboard_per_page, username, total)
-        for i, (uid, username, total) in enumerate(leaderboard_data)
+    leaderboard = [
+        ((leaderboard_per_page * (leaderboard_page - 1)) + idx + 1, row.display_name, row.total_earnings)
+        for idx, row in enumerate(leaderboard_pagination.items)
     ]
 
-    # Find logged-in user's global rank
+    # Determine user's rank
+    user_rank = None
     all_leaderboard = leaderboard_query.all()
-    user_rank = next((i + 1 for i, (uid, uname, _) in enumerate(all_leaderboard) if uid == user.id), None)
-
-    total_pages = (total_records + leaderboard_per_page - 1) // leaderboard_per_page
+    for idx, row in enumerate(all_leaderboard, start=1):
+        if row.id == user.id:
+            user_rank = idx
+            break
 
     return render_template(
         "referrals.html",
@@ -315,13 +320,12 @@ def referrals_page():
         is_admin=user.is_admin,
         referral_counts=referral_counts,
         referrals=referrals,
-        leaderboard=leaderboard_list,
+        leaderboard=leaderboard,
         user_rank=user_rank,
         page=leaderboard_page,
-        total_pages=total_pages,
-        leaderboard_filter=leaderboard_filter
+        total_pages=leaderboard_pagination.pages,
+        filter_option=filter_option
     )
-
 
 
 @main_bp.route("/playground_chat", methods=['POST'])
