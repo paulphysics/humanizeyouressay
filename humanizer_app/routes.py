@@ -219,23 +219,23 @@ def transaction_history():
                            wallet_balance=user.wallet.balance,
                            is_admin=user.is_admin)
 
-# --- NEW ROUTE START ---
 @main_bp.route("/referrals")
 @auth_required
 def referrals_page():
     """
-    Displays the user's referral statistics, including referred users and earnings.
+    Displays the user's referral statistics, including per-level counts,
+    total earnings, and direct referrals with pagination.
     """
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
-    
+
     # Calculate total referral earnings from commission transactions
     total_earnings = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.wallet_id == user.wallet.id,
         Transaction.transaction_type == 'referral_commission'
     ).scalar() or 0.0
 
-    # Also include signup bonuses if you have them
+    # Include signup bonuses if present
     signup_bonuses = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.wallet_id == user.wallet.id,
         Transaction.transaction_type == 'referral_signup_bonus'
@@ -256,6 +256,13 @@ def referrals_page():
                     level_count += 1
         referral_counts[level] = level_count
 
+    # Direct referrals = Level 1 (users where this user is in referred_by)
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    referrals = User.query.filter_by(referred_by=user.id).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
     return render_template(
         "referrals.html",
         user=user,
@@ -263,9 +270,9 @@ def referrals_page():
         wallet_balance=user.wallet.balance,
         total_earnings=total_earnings,
         is_admin=user.is_admin,
-        referral_counts=referral_counts
+        referral_counts=referral_counts,
+        referrals=referrals
     )
-# --- NEW ROUTE END ---
 
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
