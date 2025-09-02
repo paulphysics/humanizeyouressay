@@ -856,27 +856,56 @@ def withdraw_funds():
     user = User.query.get_or_404(session['user']['uid'])
     amount = float(request.form.get("amount", 0))
 
-    withdrawable_amount = (
-        db.session.query(func.sum(ReferralLedger.amount))
-        .filter_by(user_id=user.id)
-        .scalar() or 0.0
+    # Step 3: Calculate how much is withdrawable (referral commissions only)
+    withdrawable_amount = db.session.query(func.sum(ReferralLedger.amount)).filter_by(user_id=user.id).scalar() or 0.0
+
+    if amount <= 0:
+        flash("Invalid withdrawal amount.", "danger")
+        return redirect(url_for("main.wallet_page"))
+
+    if amount > withdrawable_amount:
+        flash("You can only withdraw referral commissions. Requested amount exceeds withdrawable balance.", "danger")
+        return redirect(url_for("main.wallet_page"))
+
+    # Deduct from referral ledger (so commissions aren't double-spent)
+    ledger_entries = ReferralLedger.query.filter_by(user_id=user.id).order_by(ReferralLedger.created_at.asc()).all()
+    remaining = amount
+    for entry in ledger_entries:
+        if remaining <= 0:
+            break
+        if entry.amount <= remaining:
+            remaining -= entry.amount
+            db.session.delete(entry)  # fully consumed
+        else:
+            entry.amount -= remaining
+            remaining = 0
+
+    # Create withdrawal transaction (still visible in history)
+    txn = Transaction(
+        wallet=user.wallet,
+        amount=-amount,
+        transaction_type="withdrawal",
+        description="Referral commission withdrawal"
     )
+    db.session.add(txn)
 
-    if amount < 8 or amount > withdrawable_amount:
-        flash("Invalid withdrawal request.", "danger")
-        return redirect(url_for("main.referrals_page"))
+    # Deduct from wallet balance
+    user.wallet.balance -= amount
 
-    # Always use registered phone number
-    withdrawal = ReferralWithdrawal(
+    # 🔹 NEW: Create referral withdrawal request (for admin processing)
+    from .models import ReferralWithdrawal  # local import to avoid circular issues
+    withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=amount,
         status="pending"
     )
-    db.session.add(withdrawal)
+    db.session.add(withdrawal_request)
+
     db.session.commit()
 
-    flash(f"Withdrawal request submitted. Funds will be sent to {user.phone_number}.", "success")
-    return redirect(url_for("main.referrals_page"))
+    flash(f"Withdrawal request of KSh {amount:.2f} submitted successfully. Awaiting admin approval.", "success")
+    return redirect(url_for("main.wallet_page"))
+
 
 @main_bp.route("/get_conversations", methods=['GET'])
 @auth_required
