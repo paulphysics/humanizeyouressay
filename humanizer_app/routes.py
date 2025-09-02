@@ -503,33 +503,38 @@ def _handle_logged_in_humanization():
 
         price = ESSAY_PRICE_PER_UNIT if humanizer_mode == 'essay' else PRICE_PER_UNIT
         amount_to_charge = round((word_count / WORDS_PER_UNIT) * price, 2)
-
-        # --- FIX: Stop the process if the balance is insufficient ---
         if user.wallet.balance < amount_to_charge:
-            return jsonify({
-                "status": "error",
-                "message": "Your wallet balance is insufficient. Please top up your account."
-            }), 402 # 402 Payment Required
-        
-        # --- END OF FIX ---
+            return jsonify({"status": "error", "message": "Your wallet balance is insufficient. Please top up your account."}), 402
 
         transaction_ref = f"TASK-{uuid.uuid4()}"
         user.wallet.balance -= amount_to_charge
         db.session.add(Transaction(wallet_id=user.wallet.id, amount=-amount_to_charge,
                                    transaction_type='humanize_fee', description=transaction_ref))
-      
+
         # --- REFERRAL COMMISSION LOGIC START ---
-        if user.referred_by:
-            referrer = User.query.get(user.referred_by)
-            if referrer and referrer.wallet:
-                commission_amount = amount_to_charge * 0.10  # 10% commission
-                referrer.wallet.balance += commission_amount
-                db.session.add(Transaction(
-                    wallet_id=referrer.wallet.id,
-                    amount=commission_amount,
-                    transaction_type='referral_commission',
-                    description=f'10% commission from user {user.email}'
-                ))
+        if user.upline:
+            commission_levels = {
+                0: 0.10,  # Level 1: 10%
+                1: 0.05,  # Level 2: 5%
+                2: 0.02,  # Level 3: 2%
+                3: 0.01,  # Level 4: 1%
+                4: 0.005  # Level 5: 0.5%
+            }
+            
+            upline_ids = user.upline.split(',')
+            
+            for i, referrer_id in enumerate(upline_ids):
+                if i < len(commission_levels):
+                    referrer = User.query.get(referrer_id)
+                    if referrer and referrer.wallet:
+                        commission_amount = amount_to_charge * commission_levels[i]
+                        referrer.wallet.balance += commission_amount
+                        db.session.add(Transaction(
+                            wallet_id=referrer.wallet.id,
+                            amount=commission_amount,
+                            transaction_type='referral_commission',
+                            description=f'Level {i+1} commission from user {user.email}'
+                        ))
         # --- REFERRAL COMMISSION LOGIC END ---
 
         output_format = data.get("output_format", "plain_text")
@@ -562,7 +567,6 @@ def _handle_logged_in_humanization():
         db.session.rollback()
         logger.error(f"An unexpected error occurred during humanization for user {user.id}: {e}", exc_info=True)
         flash("An unexpected error occurred. Please try again.", "danger")
-        # --- MODIFICATION: Changed 'main.home' to 'main.index' ---
         return jsonify({"status": "error", "redirect": url_for('main.index')}), 500
 
 def _handle_anonymous_humanization():
