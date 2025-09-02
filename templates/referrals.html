@@ -37,7 +37,7 @@
         <!-- Stats Section -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <!-- Lifetime Earnings -->
-            <div class="bg-white p-6 rounded-lg shadow-md relative group">
+            <div class="bg-white p-6 rounded-lg shadow-md relative">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center"
                     title="All referral earnings ever credited, including commissions and signup bonuses.">
                     Lifetime Earnings 💰
@@ -48,20 +48,17 @@
             </div>
 
             <!-- Withdrawable Balance -->
-            <div class="bg-white p-6 rounded-lg shadow-md relative group">
-                <h3 class="text-lg font-semibold text-gray-700 flex items-center relative">
+            <div class="bg-white p-6 rounded-lg shadow-md relative">
+                <h3 class="text-lg font-semibold text-gray-700 flex items-center"
+                    title="The portion of referral earnings currently available for withdrawal.">
                     Withdrawable Balance 💸
-                    <span class="ml-2 relative flex items-center group">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 cursor-pointer"
-                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <circle cx="12" cy="12" r="10" stroke-width="2"/>
-                            <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
-                            <circle cx="12" cy="8" r="1" fill="currentColor"/>
-                        </svg>
-                        <span class="absolute hidden group-hover:block bg-gray-800 text-white text-sm rounded py-1 px-2 -top-10 left-0 shadow-lg whitespace-nowrap">
-                            The portion of referral earnings currently available for withdrawal.
-                        </span>
-                    </span>
+                    <!-- decorative info icon (hover shows native title tooltip) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 ml-2" aria-hidden="true"
+                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                        <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
+                        <circle cx="12" cy="8" r="1" fill="currentColor"/>
+                    </svg>
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
@@ -79,7 +76,7 @@
             </div>
 
             <!-- Wallet Balance -->
-            <div class="bg-white p-6 rounded-lg shadow-md relative group">
+            <div class="bg-white p-6 rounded-lg shadow-md relative">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center"
                     title="Your main wallet balance, including top-ups and deductions. Not all funds are withdrawable.">
                     Wallet Balance 💳
@@ -147,7 +144,7 @@
                 </table>
             </div>
 
-            <!-- Pagination controls -->
+            <!-- Pagination controls (Direct Referrals) -->
             <div class="flex justify-between items-center mt-4">
                 <div>
                     Page {{ referrals.page }} of {{ referrals.pages }}
@@ -225,10 +222,14 @@
     function copyReferralCode() {
         const referralCode = document.getElementById('referralCode').innerText;
         navigator.clipboard.writeText(referralCode).then(() => {
-            window.App.showAlert('Referral code copied to clipboard!', 'success');
+            window.App?.showAlert
+                ? window.App.showAlert('Referral code copied to clipboard!', 'success')
+                : alert('Referral code copied to clipboard!');
         }).catch(err => {
             console.error('Failed to copy referral code: ', err);
-            window.App.showAlert('Failed to copy code.', 'danger');
+            window.App?.showAlert
+                ? window.App.showAlert('Failed to copy code.', 'danger')
+                : alert('Failed to copy code.');
         });
     }
 </script>
