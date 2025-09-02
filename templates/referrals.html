@@ -3,29 +3,30 @@
 {% block title %}My Referrals{% endblock %}
 
 {% block content %}
-<!-- ✅ FIX: Added container for custom alerts -->
-<div id="js-alert-container" class="js-alert-container flash-message rounded-lg shadow-md" style="display: none; position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999;">
+<div id="js-alert-container" class="js-alert-container flash-message rounded-lg shadow-md"
+     style="display: none; position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999;">
     <span id="js-alert-message"></span>
 </div>
 
 <main class="container mx-auto px-4 py-8">
-    <div class="max-w-4xl mx-auto">
+    <div class="max-w-5xl mx-auto">
         <h1 class="text-3xl font-bold text-gray-800 mb-6">My Referrals</h1>
 
+        <!-- Referral Code Section -->
         <div class="bg-white p-6 rounded-lg shadow-md mb-8">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Share Your Code 🚀</h2>
             <p class="text-gray-600 mb-4">
-                Share this code to earn a 10% commission on every humanization task your friends complete.
+                Share this code and earn commissions when your referrals complete tasks.
             </p>
             <div class="bg-gray-100 p-4 rounded-lg flex items-center justify-between">
-
                 {% if user.referral_code %}
                 <span id="referralCode" class="text-lg font-mono text-indigo-600">{{ user.referral_code }}</span>
-                <button onclick="copyReferralCode()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
+                <button onclick="copyReferralCode()"
+                        class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition">
                     Copy Code
                 </button>
                 {% else %}
-                <span id="referralCode" class="text-lg font-mono text-gray-500 italic">Referral code not generated yet.</span>
+                <span class="text-lg font-mono text-gray-500 italic">Referral code not generated yet.</span>
                 <button class="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold cursor-not-allowed" disabled>
                     Copy Code
                 </button>
@@ -33,67 +34,50 @@
             </div>
         </div>
 
+        <!-- Stats Section -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h3 class="text-lg font-semibold text-gray-700">Total Referrals</h3>
-                <p class="text-4xl font-bold text-indigo-600">{{ pagination.total if pagination else referred_users|length }}</p>
-            </div>
             <div class="bg-white p-6 rounded-lg shadow-md">
                 <h3 class="text-lg font-semibold text-gray-700">Total Earnings</h3>
                 <p class="text-4xl font-bold text-green-600">KSh {{ "%.2f"|format(total_earnings) }}</p>
             </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold text-gray-700">Wallet Balance</h3>
+                <p class="text-4xl font-bold text-indigo-600">KSh {{ "%.2f"|format(wallet_balance) }}</p>
+            </div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Referred Users</h2>
-            {% if referred_users %}
+        <!-- Multi-Level Referral Table -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Referrals by Level</h2>
             <div class="overflow-x-auto">
-                <table class="min-w-full bg-white">
+                <table class="min-w-full bg-white border rounded-lg">
                     <thead class="bg-gray-100">
                         <tr>
-                            <th class="py-2 px-4 border-b text-left">Email</th>
-                            <th class="py-2 px-4 border-b text-left">Date Joined</th>
+                            <th class="py-2 px-4 border-b text-left">Level</th>
+                            <th class="py-2 px-4 border-b text-left">Number of Referrals</th>
+                            <th class="py-2 px-4 border-b text-left">Commission Rate</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for referred in referred_users %}
+                        {% for level, count in referral_counts.items() %}
                         <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b">{{ referred.email }}</td>
-                            <td class="py-2 px-4 border-b">{{ referred.created_at.strftime('%B %d, %Y') }}</td>
+                            <td class="py-2 px-4 border-b">Level {{ level }}</td>
+                            <td class="py-2 px-4 border-b">{{ count }}</td>
+                            <td class="py-2 px-4 border-b">
+                                {% if level == 1 %}10%
+                                {% elif level == 2 %}5%
+                                {% elif level == 3 %}2%
+                                {% elif level == 4 %}1%
+                                {% elif level == 5 %}0.5%
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <p class="text-gray-500">You haven't referred anyone yet. Share your code to get started!</p>
-            {% endif %}
-
-            <!-- Pagination controls -->
-            <div class="mt-6">
-                {% if pagination and pagination.pages > 1 %}
-                <nav class="flex justify-center">
-                    <ul class="flex items-center -space-x-px h-8 text-sm">
-                        {% if pagination.has_prev %}
-                        <li><a href="{{ url_for('main.referrals_page', page=pagination.prev_num) }}" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 bg-white border border-e-0 border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700">Prev</a></li>
-                        {% endif %}
-
-                        {% for page_num in pagination.iter_pages() %}
-                        {% if page_num %}
-                        <li><a href="{{ url_for('main.referrals_page', page=page_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight {{ 'text-blue-600 bg-blue-50' if page_num == pagination.page else 'text-gray-500 bg-white' }} border border-gray-300 hover:bg-gray-100 hover:text-gray-700">{{ page_num }}</a></li>
-                        {% else %}
-                        <li><span class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300">...</span></li>
-                        {% endif %}
-                        {% endfor %}
-
-                        {% if pagination.has_next %}
-                        <li><a href="{{ url_for('main.referrals_page', page=pagination.next_num) }}" class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700">Next</a></li>
-                        {% endif %}
-                    </ul>
-                </nav>
-                {% endif %}
-            </div>
         </div>
+
     </div>
 </main>
 
@@ -101,11 +85,9 @@
     function copyReferralCode() {
         const referralCode = document.getElementById('referralCode').innerText;
         navigator.clipboard.writeText(referralCode).then(() => {
-            // ✅ FIX: Use the global custom alert function
             window.App.showAlert('Referral code copied to clipboard!', 'success');
         }).catch(err => {
             console.error('Failed to copy referral code: ', err);
-            // ✅ FIX: Use the global custom alert function for errors
             window.App.showAlert('Failed to copy code.', 'danger');
         });
     }
