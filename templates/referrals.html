@@ -36,32 +36,24 @@
 
         <!-- Stats Section -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-
-            <!-- Lifetime Earnings -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center">
                     Lifetime Earnings 💰
-                    <span class="ml-2 cursor-pointer text-gray-400"
-                          title="All referral commissions and signup bonuses earned since you joined. Not all may be withdrawable.">ℹ️</span>
                 </h3>
                 <p class="text-4xl font-bold text-blue-600">
                     KSh {{ "%.2f"|format(lifetime_earnings) }}
                 </p>
             </div>
 
-            <!-- Withdrawable Balance -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center">
                     Withdrawable Balance 💸
-                    <span class="ml-2 cursor-pointer text-gray-400"
-                          title="Only referral commissions available for withdrawal.">ℹ️</span>
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
                 </p>
             </div>
 
-            <!-- Wallet Balance -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center">
                     Wallet Balance 💳
@@ -102,6 +94,52 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- Direct Referrals List -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Your Direct Referrals 👥</h2>
+            {% if referrals.items %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border rounded-lg">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="py-2 px-4 border-b text-left">Name</th>
+                            <th class="py-2 px-4 border-b text-left">Email</th>
+                            <th class="py-2 px-4 border-b text-left">Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in referrals.items %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b">{{ r.name or "N/A" }}</td>
+                            <td class="py-2 px-4 border-b">{{ r.email }}</td>
+                            <td class="py-2 px-4 border-b">{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else "N/A" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination controls -->
+            <div class="flex justify-between items-center mt-4">
+                <div>
+                    Page {{ referrals.page }} of {{ referrals.pages }}
+                </div>
+                <div class="space-x-2">
+                    {% if referrals.has_prev %}
+                    <a href="{{ url_for('main.referrals_page', page=referrals.prev_num) }}"
+                       class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
+                    {% endif %}
+                    {% if referrals.has_next %}
+                    <a href="{{ url_for('main.referrals_page', page=referrals.next_num) }}"
+                       class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <p class="text-gray-600">You haven’t referred anyone yet.</p>
+            {% endif %}
         </div>
 
     </div>
