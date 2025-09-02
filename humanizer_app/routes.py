@@ -25,7 +25,7 @@ from googlesearch import search as google_search
 # --- END NEW IMPORTS ---
 
 from .extensions import db
-from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage
+from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage, ReferralLedger
 from .payment_service import (initiate_payhero_payment, WORDS_PER_UNIT,
                               PRICE_PER_UNIT, ESSAY_PRICE_PER_UNIT)
 from .document_formatter import create_formatted_document
@@ -536,12 +536,23 @@ def _handle_logged_in_humanization():
                     if referrer and referrer.wallet:
                         commission_amount = amount_to_charge * commission_levels[i]
                         referrer.wallet.balance += commission_amount
-                        db.session.add(Transaction(
-                            wallet_id=referrer.wallet.id,
+                        
+                        # after creating a referral commission transaction...
+                        commission_txn = Transaction(
+                            wallet=referrer.wallet,
                             amount=commission_amount,
-                            transaction_type='referral_commission',
-                            description=f'Level {i+1} commission from user {user.email}'
-                        ))
+                            transaction_type="referral_commission",
+                            description=f"Level {i+1} referral commission from {user.email}"
+                        )
+                        db.session.add(commission_txn)
+                        db.session.flush()  # ensures commission_txn.id is available
+                        
+                        ledger_entry = ReferralLedger(
+                            user=referrer,
+                            amount=commission_amount,
+                            transaction_id=commission_txn.id
+                        )
+                        db.session.add(ledger_entry)
         # --- REFERRAL COMMISSION LOGIC END ---
 
         output_format = data.get("output_format", "plain_text")
