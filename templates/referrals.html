@@ -41,6 +41,8 @@
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center">
                     Lifetime Earnings 💰
+                    <span class="ml-2 cursor-pointer text-gray-400"
+                          title="All referral commissions and signup bonuses earned since you joined. Not all may be withdrawable.">ℹ️</span>
                 </h3>
                 <p class="text-4xl font-bold text-blue-600">
                     KSh {{ "%.2f"|format(lifetime_earnings) }}
@@ -51,6 +53,8 @@
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center">
                     Withdrawable Balance 💸
+                    <span class="ml-2 cursor-pointer text-gray-400"
+                          title="Only referral commissions available for withdrawal.">ℹ️</span>
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
