@@ -224,7 +224,8 @@ def transaction_history():
 def referrals_page():
     """
     Displays the user's referral statistics, including per-level counts,
-    total earnings, direct referrals with pagination, and the MLM leaderboard.
+    total earnings, direct referrals with pagination, and the MLM leaderboard
+    with filters (This Month / All Time).
     """
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
@@ -268,7 +269,8 @@ def referrals_page():
         page=page, per_page=per_page, error_out=False
     )
 
-    # ✅ Leaderboard Pagination (separate page param for leaderboard)
+    # ✅ Leaderboard Filter: All Time or This Month
+    leaderboard_filter = request.args.get('filter', 'all')  # default to "all"
     leaderboard_page = request.args.get('leaderboard_page', 1, type=int)
     leaderboard_per_page = 20
 
@@ -280,8 +282,13 @@ def referrals_page():
         )
         .join(ReferralLedger)
         .group_by(User.id)
-        .order_by(func.sum(ReferralLedger.amount).desc())
     )
+
+    if leaderboard_filter == 'month':
+        start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        leaderboard_query = leaderboard_query.filter(ReferralLedger.created_at >= start_of_month)
+
+    leaderboard_query = leaderboard_query.order_by(func.sum(ReferralLedger.amount).desc())
 
     total_records = leaderboard_query.count()
     leaderboard_data = leaderboard_query.offset((leaderboard_page - 1) * leaderboard_per_page).limit(leaderboard_per_page).all()
@@ -311,8 +318,10 @@ def referrals_page():
         leaderboard=leaderboard_list,
         user_rank=user_rank,
         page=leaderboard_page,
-        total_pages=total_pages
+        total_pages=total_pages,
+        leaderboard_filter=leaderboard_filter
     )
+
 
 
 @main_bp.route("/playground_chat", methods=['POST'])
