@@ -36,8 +36,12 @@
 
         <!-- Stats Section -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Lifetime Earnings -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
-                <h3 class="text-lg font-semibold text-gray-700">Lifetime Earnings 💰</h3>
+                <h3 class="text-lg font-semibold text-gray-700 flex items-center"
+                    title="All referral earnings ever credited, including commissions and signup bonuses.">
+                    Lifetime Earnings 💰
+                </h3>
                 <p class="text-4xl font-bold text-blue-600">
                     KSh {{ "%.2f"|format(lifetime_earnings) }}
                 </p>
@@ -45,8 +49,19 @@
 
             <!-- Withdrawable Balance -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
-                <h3 class="text-lg font-semibold text-gray-700 flex items-center">
+                <h3 class="text-lg font-semibold text-gray-700 flex items-center relative">
                     Withdrawable Balance 💸
+                    <span class="ml-2 relative flex items-center group">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 cursor-pointer"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                            <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
+                            <circle cx="12" cy="8" r="1" fill="currentColor"/>
+                        </svg>
+                        <span class="absolute hidden group-hover:block bg-gray-800 text-white text-sm rounded py-1 px-2 -top-10 left-0 shadow-lg whitespace-nowrap">
+                            The portion of referral earnings currently available for withdrawal.
+                        </span>
+                    </span>
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
@@ -63,8 +78,12 @@
                 {% endif %}
             </div>
 
+            <!-- Wallet Balance -->
             <div class="bg-white p-6 rounded-lg shadow-md relative group">
-                <h3 class="text-lg font-semibold text-gray-700">Wallet Balance 💳</h3>
+                <h3 class="text-lg font-semibold text-gray-700 flex items-center"
+                    title="Your main wallet balance, including top-ups and deductions. Not all funds are withdrawable.">
+                    Wallet Balance 💳
+                </h3>
                 <p class="text-4xl font-bold text-indigo-600">
                     KSh {{ "%.2f"|format(wallet_balance) }}
                 </p>
@@ -128,7 +147,7 @@
                 </table>
             </div>
 
-            <!-- Pagination controls for direct referrals -->
+            <!-- Pagination controls -->
             <div class="flex justify-between items-center mt-4">
                 <div>
                     Page {{ referrals.page }} of {{ referrals.pages }}
@@ -155,8 +174,8 @@
                 <h2 class="text-2xl font-semibold text-gray-800">Top Performers Leaderboard</h2>
                 <form method="get" class="flex space-x-2">
                     <select name="filter" onchange="this.form.submit()" class="border rounded px-3 py-2">
-                        <option value="all" {% if leaderboard_filter == 'all' %}selected{% endif %}>All Time</option>
-                        <option value="month" {% if leaderboard_filter == 'month' %}selected{% endif %}>This Month</option>
+                        <option value="all" {% if filter_option == 'all' %}selected{% endif %}>All Time</option>
+                        <option value="month" {% if filter_option == 'month' %}selected{% endif %}>This Month</option>
                     </select>
                 </form>
             </div>
@@ -187,15 +206,15 @@
             <!-- Leaderboard Pagination -->
             <div class="flex justify-center mt-4 space-x-2">
                 {% if page > 1 %}
-                <a href="?lb_page={{ page - 1 }}&filter={{ leaderboard_filter }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
+                <a href="?lb_page={{ page - 1 }}&filter={{ filter_option }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Previous</a>
                 {% endif %}
 
                 {% for p in range(1, total_pages + 1) %}
-                <a href="?lb_page={{ p }}&filter={{ leaderboard_filter }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
+                <a href="?lb_page={{ p }}&filter={{ filter_option }}" class="px-4 py-2 rounded {% if p == page %}bg-indigo-500 text-white{% else %}bg-gray-200 hover:bg-gray-300{% endif %}">{{ p }}</a>
                 {% endfor %}
 
                 {% if page < total_pages %}
-                <a href="?lb_page={{ page + 1 }}&filter={{ leaderboard_filter }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
+                <a href="?lb_page={{ page + 1 }}&filter={{ filter_option }}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Next</a>
                 {% endif %}
             </div>
         </div>
