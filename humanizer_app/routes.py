@@ -224,7 +224,7 @@ def transaction_history():
 def referrals_page():
     """
     Displays the user's referral statistics, including per-level counts,
-    total earnings, and direct referrals with pagination.
+    total earnings, direct referrals with pagination, and the MLM leaderboard.
     """
     user = User.query.get_or_404(session['user']['uid'])
     username = get_display_name(user)
@@ -248,7 +248,6 @@ def referrals_page():
         or 0.0
     )
 
-
     # Get referral counts for each level
     referral_counts = {}
     for i in range(5):
@@ -262,12 +261,42 @@ def referrals_page():
                     level_count += 1
         referral_counts[level] = level_count
 
-    # Direct referrals = Level 1 (users where this user is in referred_by)
+    # Direct referrals (Level 1) pagination
     page = request.args.get('page', 1, type=int)
     per_page = 10
     referrals = User.query.filter_by(referred_by=user.id).paginate(
         page=page, per_page=per_page, error_out=False
     )
+
+    # ✅ Leaderboard Pagination (separate page param for leaderboard)
+    leaderboard_page = request.args.get('leaderboard_page', 1, type=int)
+    leaderboard_per_page = 20
+
+    leaderboard_query = (
+        db.session.query(
+            User.id,
+            User.username,
+            func.sum(ReferralLedger.amount).label("total_earnings")
+        )
+        .join(ReferralLedger)
+        .group_by(User.id)
+        .order_by(func.sum(ReferralLedger.amount).desc())
+    )
+
+    total_records = leaderboard_query.count()
+    leaderboard_data = leaderboard_query.offset((leaderboard_page - 1) * leaderboard_per_page).limit(leaderboard_per_page).all()
+
+    # Format leaderboard list with correct rank numbers
+    leaderboard_list = [
+        (i + 1 + (leaderboard_page - 1) * leaderboard_per_page, username, total)
+        for i, (uid, username, total) in enumerate(leaderboard_data)
+    ]
+
+    # Find logged-in user's global rank
+    all_leaderboard = leaderboard_query.all()
+    user_rank = next((i + 1 for i, (uid, uname, _) in enumerate(all_leaderboard) if uid == user.id), None)
+
+    total_pages = (total_records + leaderboard_per_page - 1) // leaderboard_per_page
 
     return render_template(
         "referrals.html",
@@ -279,7 +308,12 @@ def referrals_page():
         is_admin=user.is_admin,
         referral_counts=referral_counts,
         referrals=referrals,
+        leaderboard=leaderboard_list,
+        user_rank=user_rank,
+        page=leaderboard_page,
+        total_pages=total_pages
     )
+
 
 @main_bp.route("/playground_chat", methods=['POST'])
 @auth_required
