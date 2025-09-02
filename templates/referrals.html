@@ -52,24 +52,21 @@
                 <h3 class="text-lg font-semibold text-gray-700 flex items-center"
                     title="The portion of referral earnings currently available for withdrawal.">
                     Withdrawable Balance 💸
-                    <!-- decorative info icon (hover shows native title tooltip) -->
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 ml-2" aria-hidden="true"
-                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
-                        <line x1="12" y1="16" x2="12" y2="12" stroke-width="2"/>
-                        <circle cx="12" cy="8" r="1" fill="currentColor"/>
-                    </svg>
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
                 </p>
 
-                {% if withdrawable_balance >= 8 %}
-                <form action="{{ url_for('main.withdraw_funds') }}" method="POST" class="mt-4">
+                {% if withdrawable_balance|float >= 8 %}
+                <form action="{{ url_for('main.withdraw_funds') }}" method="POST" class="mt-4" onsubmit="handleWithdrawClick(this)">
                     <input type="hidden" name="amount" value="{{ withdrawable_balance }}">
-                    <button type="submit"
-                            class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition">
-                        Withdraw
+                    <button type="submit" id="withdrawBtn"
+                            class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition flex items-center justify-center">
+                        <span id="withdrawText">Withdraw</span>
+                        <svg id="withdrawSpinner" class="hidden animate-spin ml-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>
+                        </svg>
                     </button>
                 </form>
                 {% endif %}
@@ -231,6 +228,16 @@
                 ? window.App.showAlert('Failed to copy code.', 'danger')
                 : alert('Failed to copy code.');
         });
+    }
+
+    function handleWithdrawClick(form) {
+        const button = form.querySelector('#withdrawBtn');
+        const text = form.querySelector('#withdrawText');
+        const spinner = form.querySelector('#withdrawSpinner');
+
+        button.disabled = true;
+        text.textContent = 'Processing...';
+        spinner.classList.remove('hidden');
     }
 </script>
 {% endblock %}
