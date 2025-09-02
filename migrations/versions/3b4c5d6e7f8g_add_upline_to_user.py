@@ -1,7 +1,7 @@
 """Add upline column to User model
 
 Revision ID: 3b4c5d6e7f8g
-Revises: 2a1b3c4d5e6f
+Revises: f2a9b8c7d6f1
 Create Date: 2025-09-02 10:15:00.000000
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '3b4c5d6e7f8g'
-down_revision = '2a1b3c4d5e6f'
+down_revision = 'f2a9b8c7d6f1'
 branch_labels = None
 depends_on = None
 
