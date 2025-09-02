@@ -842,6 +842,51 @@ def contact():
                            username=username,
                            wallet_balance=wallet_balance,
                            is_admin=is_admin)
+@main_bp.route("/withdraw", methods=["POST"])
+@auth_required
+def withdraw_funds():
+    user = User.query.get_or_404(session['user']['uid'])
+    amount = float(request.form.get("amount", 0))
+
+    # Step 3: Calculate how much is withdrawable (referral commissions only)
+    withdrawable_amount = db.session.query(func.sum(ReferralLedger.amount)).filter_by(user_id=user.id).scalar() or 0.0
+
+    if amount <= 0:
+        flash("Invalid withdrawal amount.", "danger")
+        return redirect(url_for("main.wallet_page"))
+
+    if amount > withdrawable_amount:
+        flash("You can only withdraw referral commissions. Requested amount exceeds withdrawable balance.", "danger")
+        return redirect(url_for("main.wallet_page"))
+
+    # Deduct from referral ledger (so commissions aren't double-spent)
+    ledger_entries = ReferralLedger.query.filter_by(user_id=user.id).order_by(ReferralLedger.created_at.asc()).all()
+    remaining = amount
+    for entry in ledger_entries:
+        if remaining <= 0:
+            break
+        if entry.amount <= remaining:
+            remaining -= entry.amount
+            db.session.delete(entry)  # fully consumed
+        else:
+            entry.amount -= remaining
+            remaining = 0
+
+    # Create withdrawal transaction (still visible in history)
+    txn = Transaction(
+        wallet=user.wallet,
+        amount=-amount,
+        transaction_type="withdrawal",
+        description="Referral commission withdrawal"
+    )
+    db.session.add(txn)
+
+    # Deduct from wallet balance
+    user.wallet.balance -= amount
+    db.session.commit()
+
+    flash(f"Withdrawal request of KSh {amount:.2f} submitted successfully.", "success")
+    return redirect(url_for("main.wallet_page"))
 
 @main_bp.route("/get_conversations", methods=['GET'])
 @auth_required
