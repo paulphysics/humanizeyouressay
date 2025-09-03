@@ -39,7 +39,7 @@
                 <label for="phone-number-input" class="block text-lg font-medium text-gray-700">Phone Number:</label>
                 <input type="tel" id="phone-number-input" placeholder="+254700123456"
                     class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
-                <p class="text-sm text-gray-500 mt-1">Used for transactions. Ensure it matches your mobile money account.</p>
+                <p class="text-sm text-gray-500 mt-1">Used for withdrawals. Ensure it matches your mobile money account.</p>
             </div>
 
             <div>
@@ -49,8 +49,12 @@
             </div>
 
             <button id="complete-signup-btn"
-                class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out">
-                Complete Signup
+                class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out flex items-center justify-center">
+                <span id="signup-btn-text">Complete Signup</span>
+                <svg id="signup-btn-spinner" class="hidden animate-spin ml-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>
+                </svg>
             </button>
             <p id="signup-error-message" class="text-red-500 text-sm mt-1 text-center"></p>
         </div>
