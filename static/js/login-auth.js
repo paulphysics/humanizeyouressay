@@ -1,115 +1,111 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 
+// Initialize Firebase
 const firebaseApp = initializeApp(window.firebaseConfig);
 const auth = getAuth(firebaseApp);
 const provider = new GoogleAuthProvider();
 
-const googleButton = document.getElementById('sign-in-with-google-btn');
-const googleSpinner = document.getElementById('google-spinner');
-const completeSignupSection = document.getElementById('complete-signup-section');
-const completeSignupBtn = document.getElementById('complete-signup-btn');
-const signupSpinner = document.getElementById('signup-spinner');
-const signupErrorDisplay = document.getElementById('signup-error-message');
-
-let userIdToken = null;
-
-const errorMessages = {
-    duplicate_phone: "Phone number already in use.",
-    invalid_phone: "Invalid phone number format. Use +254XXXXXXXXX.",
-    missing_phone: "Phone number is required.",
-    already_completed: "Signup already completed.",
-    unauthorized: "Please sign in again.",
-    default: "An error occurred. Please try again."
-};
-
+// --- Handle Google Auth Flow (First Step) ---
 async function handleGoogleAuth() {
     try {
-        toggleGoogleButton(true);
+        // Show a loading state if you have one
+        // signInButton.disabled = true;
+
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
-        userIdToken = await user.getIdToken(true);
-
-        const referralInput = document.getElementById('referral-code-input');
-        const referralCode = referralInput ? referralInput.value : null;
+        const idToken = await user.getIdToken(true);
 
         const response = await fetch('/auth', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + userIdToken
-            },
-            body: JSON.stringify({ referral_code: referralCode })
+                'Authorization': 'Bearer ' + idToken
+            }
         });
 
-        const data = await response.json();
         if (response.ok) {
+            const data = await response.json();
+            
+            // --- NEW LOGIC HERE ---
             if (data.needs_phone) {
-                completeSignupSection.classList.remove('hidden');
-                googleButton.classList.add('hidden');
+                // User is new. Show the hidden form and hide the Google button.
+                document.getElementById('google-signin-section').style.display = 'none';
+                document.getElementById('complete-signup-form-section').style.display = 'block';
             } else {
-                window.location.href = '/';
+                // User is existing. Redirect immediately.
+                window.location.href = '/'; 
             }
         } else {
-            showGoogleError(data.error || 'Login failed.');
+            const errorMessage = await response.text();
+            document.getElementById('google-signin-error-message').textContent = `Error: ${errorMessage}`;
+            console.error('Server auth error:', errorMessage);
         }
     } catch (error) {
-        showGoogleError(error.message);
+        document.getElementById('google-signin-error-message').textContent = `Error: ${error.message}`;
+        console.error("Google Sign-In Error: ", error);
     } finally {
-        toggleGoogleButton(false);
+        // Hide loading state
+        // signInButton.disabled = false;
     }
 }
 
-async function handleCompleteSignup() {
-    const phone = document.getElementById('phone-number-input').value.trim();
-    const referral = document.getElementById('referral-code-input').value.trim();
+// --- Handle Phone/Referral Form Submission (Second Step) ---
+async function handleCompleteSignup(event) {
+    event.preventDefault(); // Prevent the default form submission
+
+    const completeSignupBtn = document.getElementById('complete-signup-btn');
+    // Show loading state
+    completeSignupBtn.disabled = true;
+    completeSignupBtn.textContent = 'Submitting...';
+
+    const phone_number = document.getElementById('phone-number-input').value.trim();
+    const referral_code = document.getElementById('referral-code-input').value.trim();
 
     try {
-        toggleSignupButton(true);
         const response = await fetch('/auth/complete-signup', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone_number: phone, referral_code: referral })
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                phone_number,
+                referral_code: referral_code || null
+            })
         });
 
         const data = await response.json();
+
         if (response.ok) {
+            // Success! Redirect to the main landing page
             window.location.href = '/';
         } else {
-            const message = errorMessages[data.error] || errorMessages.default;
-            signupErrorDisplay.textContent = message;
+            // Handle specific backend errors
+            let errorMessage = data.error || "An unknown error occurred.";
+            document.getElementById('complete-signup-error-message').textContent = `Error: ${errorMessage}`;
+            console.error('Complete signup failed:', errorMessage);
         }
     } catch (error) {
-        signupErrorDisplay.textContent = errorMessages.default;
+        document.getElementById('complete-signup-error-message').textContent = `Error: ${error.message}`;
+        console.error("Complete Signup Error: ", error);
     } finally {
-        toggleSignupButton(false);
-    }
-}
-
-function toggleGoogleButton(loading) {
-    if (loading) {
-        googleButton.disabled = true;
-        googleSpinner.classList.remove('hidden');
-    } else {
-        googleButton.disabled = false;
-        googleSpinner.classList.add('hidden');
-    }
-}
-
-function toggleSignupButton(loading) {
-    if (loading) {
-        completeSignupBtn.disabled = true;
-        signupSpinner.classList.remove('hidden');
-    } else {
+        // Hide loading state
         completeSignupBtn.disabled = false;
-        signupSpinner.classList.add('hidden');
+        completeSignupBtn.textContent = 'Complete Sign Up';
     }
 }
 
-function showGoogleError(msg) {
-    const googleErrorDisplay = document.getElementById('google-signin-error-message');
-    googleErrorDisplay.textContent = msg;
-}
+// --- Event Listeners ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Attach listener for the Google sign-in button
+    const googleSignInButton = document.getElementById('sign-in-with-google-btn');
+    if (googleSignInButton) {
+        googleSignInButton.addEventListener('click', handleGoogleAuth);
+    }
 
-if (googleButton) googleButton.addEventListener('click', handleGoogleAuth);
-if (completeSignupBtn) completeSignupBtn.addEventListener('click', handleCompleteSignup);
+    // Attach listener for the phone/referral form submission button
+    const completeSignupBtn = document.getElementById('complete-signup-btn');
+    if (completeSignupBtn) {
+        completeSignupBtn.addEventListener('click', handleCompleteSignup);
+    }
+});
