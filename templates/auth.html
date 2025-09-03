@@ -6,6 +6,9 @@
 <script>
     window.firebaseConfig = {{ firebase_config | tojson }};
 </script>
+<style>
+    .hidden { display: none; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -18,8 +21,8 @@
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">🎉 Welcome!</h1>
         <p class="text-center text-gray-600 mb-8">Sign in or create an account to continue.</p>
 
-        <!-- Step 1: Google Sign-In -->
-        <div id="google-signin-section" class="space-y-4">
+        <div class="space-y-4">
+            <!-- Google Sign-In Button -->
             <button id="sign-in-with-google-btn"
                 class="w-full bg-white text-gray-700 font-bold py-3 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center transition duration-300 ease-in-out">
                 <svg class="w-5 h-5 mr-3" viewBox="0 0 48 48">
@@ -31,32 +34,33 @@
                 <span>Sign In / Sign Up with Google</span>
             </button>
             <p id="google-signin-error-message" class="text-red-500 text-sm mt-1 text-center"></p>
-        </div>
 
-        <!-- Step 2: Extra Fields -->
-        <div id="extra-fields-section" class="hidden mt-6 space-y-4">
-            <div>
-                <label for="phone-number-input" class="block text-lg font-medium text-gray-700">Phone Number:</label>
-                <input type="tel" id="phone-number-input" placeholder="+254700123456"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
-                <p class="text-sm text-gray-500 mt-1">Used for withdrawals. Ensure it matches your mobile money account.</p>
+            <!-- Complete Signup Section -->
+            <div id="complete-signup-section" class="hidden mt-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Complete Your Signup</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label for="phone-number-input" class="block text-lg font-medium text-gray-700">Phone Number:</label>
+                        <input type="tel" id="phone-number-input" name="phone-number" placeholder="+254700123456"
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <p class="text-sm text-gray-500 mt-1">Use your MPESA number for withdrawals.</p>
+                    </div>
+
+                    <div>
+                        <label for="referral-code-input" class="block text-lg font-medium text-gray-700">Referral Code (Optional):</label>
+                        <input type="text" id="referral-code-input" name="referral-code" placeholder="Enter code from a friend"
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+
+                    <p id="signup-error-message" class="text-red-500 text-sm"></p>
+
+                    <button id="complete-signup-btn"
+                            class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out">
+                        Complete Signup
+                    </button>
+                </div>
             </div>
-
-            <div>
-                <label for="referral-code-input" class="block text-lg font-medium text-gray-700">Referral Code (Optional):</label>
-                <input type="text" id="referral-code-input" placeholder="Enter code from a friend"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            </div>
-
-            <button id="complete-signup-btn"
-                class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out flex items-center justify-center">
-                <span id="signup-btn-text">Complete Signup</span>
-                <svg id="signup-btn-spinner" class="hidden animate-spin ml-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>
-                </svg>
-            </button>
-            <p id="signup-error-message" class="text-red-500 text-sm mt-1 text-center"></p>
         </div>
     </div>
 </div>
