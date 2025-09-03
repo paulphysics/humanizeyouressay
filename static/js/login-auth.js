@@ -6,105 +6,127 @@ const firebaseApp = initializeApp(window.firebaseConfig);
 const auth = getAuth(firebaseApp);
 const provider = new GoogleAuthProvider();
 
-// --- Handle Google Auth Flow (First Step) ---
+// Your DOM element variables
+const googleButton = document.getElementById('sign-in-with-google-btn');
+const googleSpinner = document.getElementById('google-spinner');
+const completeSignupSection = document.getElementById('complete-signup-form-section');
+const completeSignupBtn = document.getElementById('complete-signup-btn');
+const signupSpinner = document.getElementById('signup-spinner');
+const signupErrorDisplay = document.getElementById('complete-signup-error-message');
+const googleErrorDisplay = document.getElementById('google-signin-error-message');
+
+let userIdToken = null;
+
+const errorMessages = {
+    duplicate_phone: "Phone number already in use.",
+    invalid_phone: "Invalid phone number format. Use +254XXXXXXXXX.",
+    missing_phone: "Phone number is required.",
+    already_completed: "Signup already completed.",
+    unauthorized: "Please sign in again.",
+    default: "An error occurred. Please try again."
+};
+
+// --- Core Logic Functions ---
+
 async function handleGoogleAuth() {
     try {
-        // Show a loading state if you have one
-        // signInButton.disabled = true;
+        toggleGoogleButton(true);
 
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
-        const idToken = await user.getIdToken(true);
+        userIdToken = await user.getIdToken(true); // Store the token globally
 
         const response = await fetch('/auth', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + idToken
+                'Authorization': 'Bearer ' + userIdToken
             }
         });
 
+        const data = await response.json();
         if (response.ok) {
-            const data = await response.json();
-            
-            // --- NEW LOGIC HERE ---
             if (data.needs_phone) {
-                // User is new. Show the hidden form and hide the Google button.
+                // Hide Google section, show complete signup section
                 document.getElementById('google-signin-section').style.display = 'none';
                 document.getElementById('complete-signup-form-section').style.display = 'block';
             } else {
-                // User is existing. Redirect immediately.
-                window.location.href = '/'; 
+                // Existing user, redirect immediately
+                window.location.href = '/';
             }
         } else {
-            const errorMessage = await response.text();
-            document.getElementById('google-signin-error-message').textContent = `Error: ${errorMessage}`;
-            console.error('Server auth error:', errorMessage);
+            showGoogleError(data.error || 'Login failed.');
         }
     } catch (error) {
-        document.getElementById('google-signin-error-message').textContent = `Error: ${error.message}`;
-        console.error("Google Sign-In Error: ", error);
+        showGoogleError(error.message);
     } finally {
-        // Hide loading state
-        // signInButton.disabled = false;
+        toggleGoogleButton(false);
     }
 }
 
-// --- Handle Phone/Referral Form Submission (Second Step) ---
-async function handleCompleteSignup(event) {
-    event.preventDefault(); // Prevent the default form submission
-
-    const completeSignupBtn = document.getElementById('complete-signup-btn');
-    // Show loading state
-    completeSignupBtn.disabled = true;
-    completeSignupBtn.textContent = 'Submitting...';
-
-    const phone_number = document.getElementById('phone-number-input').value.trim();
-    const referral_code = document.getElementById('referral-code-input').value.trim();
+async function handleCompleteSignup() {
+    const phone = document.getElementById('phone-number-input').value.trim();
+    const referral = document.getElementById('referral-code-input').value.trim();
 
     try {
+        toggleSignupButton(true);
         const response = await fetch('/auth/complete-signup', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + userIdToken // Pass the stored token
             },
-            body: JSON.stringify({
-                phone_number,
-                referral_code: referral_code || null
-            })
+            body: JSON.stringify({ phone_number: phone, referral_code: referral })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            // Success! Redirect to the main landing page
             window.location.href = '/';
         } else {
-            // Handle specific backend errors
-            let errorMessage = data.error || "An unknown error occurred.";
-            document.getElementById('complete-signup-error-message').textContent = `Error: ${errorMessage}`;
-            console.error('Complete signup failed:', errorMessage);
+            const message = errorMessages[data.error] || errorMessages.default;
+            signupErrorDisplay.textContent = message;
         }
     } catch (error) {
-        document.getElementById('complete-signup-error-message').textContent = `Error: ${error.message}`;
-        console.error("Complete Signup Error: ", error);
+        signupErrorDisplay.textContent = errorMessages.default;
     } finally {
-        // Hide loading state
-        completeSignupBtn.disabled = false;
-        completeSignupBtn.textContent = 'Complete Sign Up';
+        toggleSignupButton(false);
     }
 }
 
-// --- Event Listeners ---
-document.addEventListener('DOMContentLoaded', () => {
-    // Attach listener for the Google sign-in button
-    const googleSignInButton = document.getElementById('sign-in-with-google-btn');
-    if (googleSignInButton) {
-        googleSignInButton.addEventListener('click', handleGoogleAuth);
-    }
+// --- Helper Functions for UI State ---
 
-    // Attach listener for the phone/referral form submission button
-    const completeSignupBtn = document.getElementById('complete-signup-btn');
+function toggleGoogleButton(loading) {
+    if (loading) {
+        googleButton.disabled = true;
+        // googleSpinner.classList.remove('hidden'); // Assuming you have a spinner
+    } else {
+        googleButton.disabled = false;
+        // googleSpinner.classList.add('hidden'); // Assuming you have a spinner
+    }
+}
+
+function toggleSignupButton(loading) {
+    if (loading) {
+        completeSignupBtn.disabled = true;
+        // signupSpinner.classList.remove('hidden'); // Assuming you have a spinner
+    } else {
+        completeSignupBtn.disabled = false;
+        // signupSpinner.classList.add('hidden'); // Assuming you have a spinner
+    }
+}
+
+function showGoogleError(msg) {
+    const googleErrorDisplay = document.getElementById('google-signin-error-message');
+    googleErrorDisplay.textContent = msg;
+}
+
+// --- Event Listeners ---
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (googleButton) {
+        googleButton.addEventListener('click', handleGoogleAuth);
+    }
     if (completeSignupBtn) {
         completeSignupBtn.addEventListener('click', handleCompleteSignup);
     }
