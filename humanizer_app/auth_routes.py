@@ -96,34 +96,35 @@ def authorize():
 def complete_signup():
     """
     Completes user signup by adding phone number and handling referral code.
+    Returns JSON with error codes for frontend mapping.
     """
     if 'user' not in session:
-        return jsonify({"error": "unauthorized"}), 401
+        return jsonify({"status": "error", "error": "unauthorized"}), 401
 
-    data = request.get_json()
+    data = request.get_json() or {}
     phone_number = data.get('phone_number', '').strip()
     referral_code = data.get('referral_code', '').strip() if data.get('referral_code') else None
 
     # Validate phone presence
     if not phone_number:
-        return jsonify({"error": "missing_phone"}), 400
+        return jsonify({"status": "error", "error": "missing_phone"}), 400
 
     # Validate Kenyan phone format
     if not KENYAN_PHONE_REGEX.match(phone_number):
-        return jsonify({"error": "invalid_phone"}), 400
+        return jsonify({"status": "error", "error": "invalid_phone"}), 400
 
     # Check duplicate phone
     if User.query.filter_by(phone_number=phone_number).first():
-        return jsonify({"error": "duplicate_phone"}), 409
+        return jsonify({"status": "error", "error": "duplicate_phone"}), 409
 
     # Fetch current user
     user = User.query.get(session['user']['uid'])
     if not user:
-        return jsonify({"error": "user_not_found"}), 404
+        return jsonify({"status": "error", "error": "user_not_found"}), 404
 
     # If phone already exists, block
     if user.phone_number:
-        return jsonify({"error": "already_completed"}), 400
+        return jsonify({"status": "error", "error": "already_completed"}), 400
 
     # Save phone number
     user.phone_number = phone_number
@@ -141,25 +142,7 @@ def complete_signup():
 
     db.session.commit()
 
-    return jsonify({"status": "success"}), 200
-
-
-# --- Public Auth Pages ---
-@auth_bp.route('/auth/page')
-def auth_page():
-    if 'user' in session:
-        return redirect(url_for('main.home'))
-
-    firebase_config = {
-        "apiKey": os.getenv("FIREBASE_API_KEY"),
-        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-        "projectId": os.getenv("FIREBASE_PROJECT_ID"),
-        "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-        "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
-        "appId": os.getenv("FIREBASE_APP_ID"),
-        "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
-    }
-    return render_template('auth.html', firebase_config=firebase_config)
+    return jsonify({"status": "success", "message": "Signup completed successfully."}), 200
 
 
 @auth_bp.route('/login')
