@@ -1,13 +1,17 @@
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
 from firebase_admin import auth
 from functools import wraps
 from .extensions import db
 from .models import User, Wallet
 import os
 import uuid
+import re
 
-# Create a Blueprint for authentication routes
 auth_bp = Blueprint('auth', __name__)
+
+# Kenyan phone format validation
+KENYAN_PHONE_REGEX = re.compile(r"^\+254\d{9}$")
+
 
 # Decorator to protect routes that require authentication
 def auth_required(f):
@@ -22,19 +26,14 @@ def auth_required(f):
 @auth_bp.route('/auth', methods=['POST'])
 def authorize():
     """
-    Receives an ID token from the client, verifies it, creates/updates a local user
-    and wallet, captures the user's name and phone number, and creates a server-side session.
-    Also handles referral codes for new users.
+    Google authentication handler.
+    Verifies Firebase ID token, creates user if not exists (without phone yet), starts session.
     """
     token = request.headers.get('Authorization')
     if not token or not token.startswith('Bearer '):
         return "Unauthorized", 401
 
     id_token = token.split('Bearer ')[1]
-
-    data = request.get_json()
-    referral_code = data.get('referral_code') if data else None
-    phone_number = data.get('phone_number') if data else None
 
     try:
         decoded_token = auth.verify_id_token(id_token, check_revoked=True)
@@ -45,36 +44,22 @@ def authorize():
         user = User.query.get(uid)
 
         if not user:
+            # Check if email already exists
             if User.query.filter_by(email=email).first():
-                return "An account with a different sign-in method already exists for this email.", 409
+                return jsonify({"error": "email_conflict"}), 409
 
-            # Phone number is required for withdrawals
-            if not phone_number:
-                return "Phone number is required to create an account.", 400
+            # Create user with basic details (phone will be added later)
+            new_user = User(
+                id=uid,
+                email=email,
+                name=name,
+                phone_number=None,  # Will be updated in /auth/complete-signup
+                referral_code=f"REF-{str(uuid.uuid4())[:8].upper()}"
+            )
 
-            # Ensure phone number is unique
-            if User.query.filter_by(phone_number=phone_number).first():
-                return "This phone number is already registered.", 409
-
-            new_user = User(id=uid, email=email, name=name, phone_number=phone_number)
-
-            # --- REFERRAL LOGIC ---
-            new_user.referral_code = f"REF-{str(uuid.uuid4())[:8].upper()}"
-
-            if referral_code:
-                referrer = User.query.filter_by(referral_code=referral_code).first()
-                if referrer:
-                    new_user.referred_by = referrer.id
-
-                    # Construct the upline
-                    upline = [referrer.id]
-                    if referrer.upline:
-                        upline.extend(referrer.upline.split(','))
-
-                    # Limit to 4 levels so the direct referrer is the 5th
-                    new_user.upline = ",".join(upline[:4])
-
+            # Create wallet for user
             new_wallet = Wallet(user=new_user, balance=0.0)
+
             db.session.add(new_user)
             db.session.add(new_wallet)
             db.session.commit()
@@ -85,8 +70,7 @@ def authorize():
                 user.name = name
                 db.session.commit()
 
-            # Do NOT update phone number after signup to prevent fraud
-
+        # Create session
         session['user'] = {
             'uid': user.id,
             'email': user.email,
@@ -94,15 +78,73 @@ def authorize():
         }
         session.permanent = True
 
-        return jsonify({"message": "Login successful", "is_admin": user.is_admin}), 200
+        # If phone is missing, tell frontend to complete signup
+        needs_phone = user.phone_number is None
+
+        return jsonify({
+            "message": "Login successful",
+            "is_admin": user.is_admin,
+            "needs_phone": needs_phone
+        }), 200
 
     except Exception as e:
-        print(f"An error occurred during authorization: {e}")
+        print(f"Error during authorization: {e}")
         return f"An error occurred: {e}", 500
 
 
-# --- Public Routes for Auth Pages ---
+@auth_bp.route('/auth/complete-signup', methods=['POST'])
+def complete_signup():
+    """
+    Completes user signup by adding phone number and handling referral code.
+    """
+    if 'user' not in session:
+        return jsonify({"error": "unauthorized"}), 401
 
+    data = request.get_json()
+    phone_number = data.get('phone_number', '').strip()
+    referral_code = data.get('referral_code', '').strip() if data.get('referral_code') else None
+
+    # Validate phone presence
+    if not phone_number:
+        return jsonify({"error": "missing_phone"}), 400
+
+    # Validate Kenyan phone format
+    if not KENYAN_PHONE_REGEX.match(phone_number):
+        return jsonify({"error": "invalid_phone"}), 400
+
+    # Check duplicate phone
+    if User.query.filter_by(phone_number=phone_number).first():
+        return jsonify({"error": "duplicate_phone"}), 409
+
+    # Fetch current user
+    user = User.query.get(session['user']['uid'])
+    if not user:
+        return jsonify({"error": "user_not_found"}), 404
+
+    # If phone already exists, block
+    if user.phone_number:
+        return jsonify({"error": "already_completed"}), 400
+
+    # Save phone number
+    user.phone_number = phone_number
+
+    # Handle referral logic
+    if referral_code and not user.referred_by:
+        referrer = User.query.filter_by(referral_code=referral_code).first()
+        if referrer:
+            user.referred_by = referrer.id
+            # Construct upline (limit 4 ancestors)
+            upline = [referrer.id]
+            if referrer.upline:
+                upline.extend(referrer.upline.split(','))
+            user.upline = ",".join(upline[:4])
+
+    db.session.commit()
+
+    return jsonify({"status": "success"}), 200
+
+
+# --- Public Auth Pages ---
 @auth_bp.route('/auth/page')
 def auth_page():
     if 'user' in session:
