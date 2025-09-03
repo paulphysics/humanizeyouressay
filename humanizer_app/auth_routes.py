@@ -23,6 +23,20 @@ def auth_required(f):
     return decorated_function
 
 
+@auth_bp.route('/auth', methods=['GET'])
+def auth_page():
+    """
+    Renders the authentication page (e.g., Google Sign-In).
+    If the user is already logged in, it redirects to the main homepage.
+    This resolves the BuildError for 'auth.auth_page'.
+    """
+    if 'user' in session:
+        # Assuming your main page's endpoint is 'main.index'
+        # Adjust if your main page route is named differently.
+        return redirect(url_for('main.index'))
+    return render_template('auth.html')
+
+
 @auth_bp.route('/auth', methods=['POST'])
 def authorize():
     """
