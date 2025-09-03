@@ -69,16 +69,26 @@ async function handleCompleteSignup() {
 
         const data = await response.json();
 
-        if (response.ok) {
+        if (response.ok && data.status === "success") {
             window.location.href = '/';
         } else {
-            errorDisplay.textContent = data.message || "Signup failed.";
+            // Map common server errors to friendly messages
+            let message = data.message || "Signup failed. Please try again.";
+            if (message.includes("already in use")) {
+                message = "This phone number is already linked to another account.";
+            } else if (message.includes("Invalid Kenyan phone")) {
+                message = "Please enter a valid Kenyan phone number (format: +2547XXXXXXXX).";
+            } else if (message.includes("required")) {
+                message = "Phone number is required.";
+            }
+            errorDisplay.textContent = message;
+
             button.disabled = false;
             spinner.classList.add('hidden');
             buttonText.textContent = "Complete Signup";
         }
     } catch (error) {
-        errorDisplay.textContent = `Error: ${error.message}`;
+        errorDisplay.textContent = `Network Error: ${error.message}`;
         button.disabled = false;
         spinner.classList.add('hidden');
         buttonText.textContent = "Complete Signup";
