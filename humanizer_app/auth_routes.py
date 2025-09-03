@@ -1,12 +1,12 @@
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
-from firebase_admin import auth
-from functools import wraps
-from .extensions import db
-from .models import User, Wallet
 import os
 import uuid
 import re
-import json
+from functools import wraps
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
+from firebase_admin import auth
+from .extensions import db
+from .models import User, Wallet
+
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -24,28 +24,6 @@ def auth_required(f):
     return decorated_function
 
 
-@auth_bp.route('/auth', methods=['GET'])
-def auth_page():
-    """
-    Renders the authentication page (e.g., Google Sign-In).
-    If the user is already logged in, it redirects to the main homepage.
-    This resolves the BuildError for 'auth.auth_page'.
-    """
-    if 'user' in session:
-        # Assuming your main page's endpoint is 'main.index'
-        # Adjust if your main page route is named differently.
-        return redirect(url_for('main.index'))
-    
-    # Load Firebase config from environment variable and pass it to the template
-    firebase_config_str = os.environ.get('FIREBASE_CONFIG')
-    if not firebase_config_str:
-        # Handle case where config is not set, maybe return an error page
-        return "Firebase configuration is missing.", 500
-        
-    firebase_config = json.loads(firebase_config_str)
-    return render_template('auth.html', firebase_config=firebase_config)
-
-
 @auth_bp.route('/auth', methods=['POST'])
 def authorize():
     """
@@ -54,7 +32,7 @@ def authorize():
     """
     token = request.headers.get('Authorization')
     if not token or not token.startswith('Bearer '):
-        return "Unauthorized", 401
+        return jsonify({"error": "unauthorized"}), 401
 
     id_token = token.split('Bearer ')[1]
 
@@ -112,7 +90,7 @@ def authorize():
 
     except Exception as e:
         print(f"Error during authorization: {e}")
-        return f"An error occurred: {e}", 500
+        return jsonify({"error": f"An error occurred: {e}"}), 500
 
 
 @auth_bp.route('/auth/complete-signup', methods=['POST'])
@@ -168,6 +146,30 @@ def complete_signup():
     return jsonify({"status": "success", "message": "Signup completed successfully."}), 200
 
 
+# --- Public Auth Pages ---
+@auth_bp.route('/auth/page')
+def auth_page():
+    """
+    Renders the Firebase authentication page.
+    """
+    # Check if user is already authenticated
+    if 'user' in session:
+        return redirect(url_for('main.home'))
+
+    # Retrieve Firebase config from environment variables
+    firebase_config = {
+        "apiKey": os.getenv("FIREBASE_API_KEY"),
+        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
+        "projectId": os.getenv("FIREBASE_PROJECT_ID"),
+        "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
+        "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
+        "appId": os.getenv("FIREBASE_APP_ID")
+    }
+
+    # Pass the config to the template
+    return render_template('auth.html', firebase_config=firebase_config)
+
+
 @auth_bp.route('/login')
 def login():
     return redirect(url_for('auth.auth_page'))
@@ -182,4 +184,3 @@ def signup():
 def logout():
     session.pop('user', None)
     return redirect(url_for('auth.auth_page'))
-
