@@ -1113,49 +1113,45 @@ def clear_all_conversations():
         logger.error(f"Error clearing all conversations for user {user.id}: {e}", exc_info=True)
         return jsonify({'error': 'An internal error occurred while clearing history.'}), 500
 
-@main_bp.route("/auth/complete-signup", methods=["POST"])
-@auth_required
+@auth_bp.route('/auth/complete-signup', methods=['POST'])
 def complete_signup():
-    """
-    Completes the signup process by adding the user's phone number
-    and optional referral code. Validates uniqueness and format.
-    """
-    user = User.query.get_or_404(session['user']['uid'])
-    data = request.get_json() or {}
+    if 'user' not in session or session['user'].get('incomplete') != True:
+        return jsonify({"error": "Unauthorized"}), 401
 
-    phone_number = data.get("phone_number", "").strip()
-    referral_code = data.get("referral_code", "").strip() if data.get("referral_code") else None
+    data = request.get_json()
+    phone_number = data.get('phone_number')
+    referral_code = data.get('referral_code')
 
-    # Validate phone number presence
     if not phone_number:
-        return jsonify({"status": "error", "message": "Phone number is required."}), 400
+        return jsonify({"error": "Phone number is required"}), 400
 
-    # Validate Kenyan phone number format
-    if not KENYAN_PHONE_REGEX.match(phone_number):
-        return jsonify({"status": "error", "message": "Invalid Kenyan phone number format."}), 400
+    # Check uniqueness
+    if User.query.filter_by(phone_number=phone_number).first():
+        return jsonify({"error": "duplicate_phone"}), 409
 
-    # Check if phone number is already used
-    existing_user = User.query.filter(User.phone_number == phone_number, User.id != user.id).first()
-    if existing_user:
-        return jsonify({"status": "error", "message": "This phone number is already in use."}), 400
+    user = User.query.get(session['user']['uid'])
+    if not user:
+        return jsonify({"error": "User not found"}), 404
 
-    # Save phone number
     user.phone_number = phone_number
 
-    # Handle referral code if provided
+    # Handle referral
     if referral_code:
         referrer = User.query.filter_by(referral_code=referral_code).first()
-        if referrer and referrer.id != user.id:
+        if referrer:
             user.referred_by = referrer.id
+            upline = [referrer.id]
             if referrer.upline:
-                user.upline = f"{referrer.id},{referrer.upline}"
-            else:
-                user.upline = str(referrer.id)
+                upline.extend(referrer.upline.split(','))
+            user.upline = ",".join(upline[:4])
 
-    try:
-        db.session.commit()
-        return jsonify({"status": "success", "message": "Signup completed successfully."}), 200
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error completing signup for user {user.id}: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "Failed to complete signup. Please try again."}), 500
+    # Create wallet if needed
+    if not user.wallet:
+        wallet = Wallet(user=user, balance=0.0)
+        db.session.add(wallet)
+
+    db.session.commit()
+
+    # Update session to mark as complete
+    session['user'] = {'uid': user.id, 'email': user.email, 'name': user.name}
+    return jsonify({"status": "success", "redirect": url_for('main.home')})
