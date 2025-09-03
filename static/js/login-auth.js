@@ -5,98 +5,95 @@ const firebaseApp = initializeApp(window.firebaseConfig);
 const auth = getAuth(firebaseApp);
 const provider = new GoogleAuthProvider();
 
-let firebaseIdToken = null;
+const googleButton = document.getElementById('sign-in-with-google-btn');
+const completeSignupSection = document.getElementById('complete-signup-section');
+const completeSignupBtn = document.getElementById('complete-signup-btn');
+const signupErrorDisplay = document.getElementById('signup-error-message');
 
-// Google Sign-In
+let userIdToken = null; // Store token for second request
+
+const errorMessages = {
+    duplicate_phone: "Phone number already in use.",
+    invalid_phone: "Invalid phone number format. Use +254XXXXXXXXX.",
+    missing_phone: "Phone number is required.",
+    already_completed: "Signup is already completed.",
+    unauthorized: "Please sign in again.",
+    default: "An error occurred. Please try again."
+};
+
 async function handleGoogleAuth() {
     try {
         const result = await signInWithPopup(auth, provider);
-        firebaseIdToken = await result.user.getIdToken(true);
+        const user = result.user;
+        userIdToken = await user.getIdToken(true);
 
-        document.getElementById('google-signin-section').classList.add('hidden');
-        document.getElementById('extra-fields-section').classList.remove('hidden');
+        const referralInput = document.getElementById('referral-code-input');
+        const referralCode = referralInput ? referralInput.value : null;
 
+        const response = await fetch('/auth', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + userIdToken
+            },
+            body: JSON.stringify({ referral_code: referralCode })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            if (data.needs_phone) {
+                // Show complete signup UI
+                completeSignupSection.classList.remove('hidden');
+                googleButton.classList.add('hidden');
+            } else {
+                window.location.href = '/'; // No phone needed → redirect
+            }
+        } else {
+            showGoogleError(data.error || 'Login failed.');
+        }
     } catch (error) {
-        const errorDisplay = document.getElementById('google-signin-error-message');
-        if (errorDisplay) errorDisplay.textContent = `Error: ${error.message}`;
-        console.error("Google Sign-In Error:", error);
+        showGoogleError(error.message);
     }
 }
 
-// Validate Kenyan phone number format
-function isValidKenyaPhone(phone) {
-    const regex = /^\+2547\d{8}$/;
-    return regex.test(phone);
-}
-
-// Complete Signup
 async function handleCompleteSignup() {
-    const phoneNumber = document.getElementById('phone-number-input').value.trim();
-    const referralCode = document.getElementById('referral-code-input').value.trim();
-    const errorDisplay = document.getElementById('signup-error-message');
-    const button = document.getElementById('complete-signup-btn');
-    const spinner = document.getElementById('signup-btn-spinner');
-    const buttonText = document.getElementById('signup-btn-text');
-
-    errorDisplay.textContent = '';
-
-    if (!phoneNumber) {
-        errorDisplay.textContent = "Phone number is required.";
-        return;
-    }
-    if (!isValidKenyaPhone(phoneNumber)) {
-        errorDisplay.textContent = "Enter a valid Kenyan number (e.g., +254700123456).";
-        return;
-    }
-
-    // Disable button and show spinner
-    button.disabled = true;
-    spinner.classList.remove('hidden');
-    buttonText.textContent = "Processing...";
+    const phone = document.getElementById('phone-number-input').value.trim();
+    const referral = document.getElementById('referral-code-input').value.trim();
 
     try {
         const response = await fetch('/auth/complete-signup', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + firebaseIdToken
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                phone_number: phoneNumber,
-                referral_code: referralCode || null
+                phone_number: phone,
+                referral_code: referral
             })
         });
 
         const data = await response.json();
 
-        if (response.ok && data.status === "success") {
+        if (response.ok) {
             window.location.href = '/';
         } else {
-            // Map common server errors to friendly messages
-            let message = data.message || "Signup failed. Please try again.";
-            if (message.includes("already in use")) {
-                message = "This phone number is already linked to another account.";
-            } else if (message.includes("Invalid Kenyan phone")) {
-                message = "Please enter a valid Kenyan phone number (format: +2547XXXXXXXX).";
-            } else if (message.includes("required")) {
-                message = "Phone number is required.";
-            }
-            errorDisplay.textContent = message;
-
-            button.disabled = false;
-            spinner.classList.add('hidden');
-            buttonText.textContent = "Complete Signup";
+            const message = errorMessages[data.error] || errorMessages.default;
+            signupErrorDisplay.textContent = message;
         }
     } catch (error) {
-        errorDisplay.textContent = `Network Error: ${error.message}`;
-        button.disabled = false;
-        spinner.classList.add('hidden');
-        buttonText.textContent = "Complete Signup";
-        console.error("Complete Signup Error:", error);
+        signupErrorDisplay.textContent = errorMessages.default;
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('sign-in-with-google-btn')?.addEventListener('click', handleGoogleAuth);
-    document.getElementById('complete-signup-btn')?.addEventListener('click', handleCompleteSignup);
-});
+function showGoogleError(msg) {
+    const googleErrorDisplay = document.getElementById('google-signin-error-message');
+    googleErrorDisplay.textContent = msg;
+}
+
+if (googleButton) {
+    googleButton.addEventListener('click', handleGoogleAuth);
+}
+if (completeSignupBtn) {
+    completeSignupBtn.addEventListener('click', handleCompleteSignup);
+}
