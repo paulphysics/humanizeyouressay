@@ -8,6 +8,20 @@
 </script>
 <style>
     .hidden { display: none; }
+    .spinner {
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #4f46e5; /* Indigo */
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        animation: spin 0.6s linear infinite;
+        display: inline-block;
+        margin-left: 8px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 
@@ -32,6 +46,7 @@
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
                 </svg>
                 <span>Sign In / Sign Up with Google</span>
+                <span id="google-spinner" class="spinner hidden"></span>
             </button>
             <p id="google-signin-error-message" class="text-red-500 text-sm mt-1 text-center"></p>
 
@@ -56,8 +71,9 @@
                     <p id="signup-error-message" class="text-red-500 text-sm"></p>
 
                     <button id="complete-signup-btn"
-                            class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out">
-                        Complete Signup
+                            class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out flex justify-center items-center">
+                        <span>Complete Signup</span>
+                        <span id="signup-spinner" class="spinner hidden"></span>
                     </button>
                 </div>
             </div>
