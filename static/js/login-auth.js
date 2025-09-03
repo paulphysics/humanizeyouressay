@@ -6,23 +6,26 @@ const auth = getAuth(firebaseApp);
 const provider = new GoogleAuthProvider();
 
 const googleButton = document.getElementById('sign-in-with-google-btn');
+const googleSpinner = document.getElementById('google-spinner');
 const completeSignupSection = document.getElementById('complete-signup-section');
 const completeSignupBtn = document.getElementById('complete-signup-btn');
+const signupSpinner = document.getElementById('signup-spinner');
 const signupErrorDisplay = document.getElementById('signup-error-message');
 
-let userIdToken = null; // Store token for second request
+let userIdToken = null;
 
 const errorMessages = {
     duplicate_phone: "Phone number already in use.",
     invalid_phone: "Invalid phone number format. Use +254XXXXXXXXX.",
     missing_phone: "Phone number is required.",
-    already_completed: "Signup is already completed.",
+    already_completed: "Signup already completed.",
     unauthorized: "Please sign in again.",
     default: "An error occurred. Please try again."
 };
 
 async function handleGoogleAuth() {
     try {
+        toggleGoogleButton(true);
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
         userIdToken = await user.getIdToken(true);
@@ -40,20 +43,20 @@ async function handleGoogleAuth() {
         });
 
         const data = await response.json();
-
         if (response.ok) {
             if (data.needs_phone) {
-                // Show complete signup UI
                 completeSignupSection.classList.remove('hidden');
                 googleButton.classList.add('hidden');
             } else {
-                window.location.href = '/'; // No phone needed → redirect
+                window.location.href = '/';
             }
         } else {
             showGoogleError(data.error || 'Login failed.');
         }
     } catch (error) {
         showGoogleError(error.message);
+    } finally {
+        toggleGoogleButton(false);
     }
 }
 
@@ -62,19 +65,14 @@ async function handleCompleteSignup() {
     const referral = document.getElementById('referral-code-input').value.trim();
 
     try {
+        toggleSignupButton(true);
         const response = await fetch('/auth/complete-signup', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                phone_number: phone,
-                referral_code: referral
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone_number: phone, referral_code: referral })
         });
 
         const data = await response.json();
-
         if (response.ok) {
             window.location.href = '/';
         } else {
@@ -83,6 +81,28 @@ async function handleCompleteSignup() {
         }
     } catch (error) {
         signupErrorDisplay.textContent = errorMessages.default;
+    } finally {
+        toggleSignupButton(false);
+    }
+}
+
+function toggleGoogleButton(loading) {
+    if (loading) {
+        googleButton.disabled = true;
+        googleSpinner.classList.remove('hidden');
+    } else {
+        googleButton.disabled = false;
+        googleSpinner.classList.add('hidden');
+    }
+}
+
+function toggleSignupButton(loading) {
+    if (loading) {
+        completeSignupBtn.disabled = true;
+        signupSpinner.classList.remove('hidden');
+    } else {
+        completeSignupBtn.disabled = false;
+        signupSpinner.classList.add('hidden');
     }
 }
 
@@ -91,9 +111,5 @@ function showGoogleError(msg) {
     googleErrorDisplay.textContent = msg;
 }
 
-if (googleButton) {
-    googleButton.addEventListener('click', handleGoogleAuth);
-}
-if (completeSignupBtn) {
-    completeSignupBtn.addEventListener('click', handleCompleteSignup);
-}
+if (googleButton) googleButton.addEventListener('click', handleGoogleAuth);
+if (completeSignupBtn) completeSignupBtn.addEventListener('click', handleCompleteSignup);
