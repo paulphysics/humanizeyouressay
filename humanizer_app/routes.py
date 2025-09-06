@@ -916,54 +916,43 @@ def contact():
 @auth_required
 def withdraw_funds():
     user = User.query.get_or_404(session['user']['uid'])
-    amount = float(request.form.get("amount", 0))
 
-    # Step 1: Minimum withdrawal check
-    if amount < 0.5:
-        flash("Minimum withdrawal amount is KSh 0.50", "danger")
-        return redirect(url_for("main.referrals_page"))
-
-    # Step 2: Calculate withdrawable amount from ReferralLedger
+    # ✅ Step 1: Calculate withdrawable amount (only referral commissions)
     withdrawable_amount = (
-        db.session.query(func.sum(ReferralLedger.amount))
-        .filter_by(user_id=user.id)
+        db.session.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.wallet_id == user.wallet.id,
+            Transaction.transaction_type == "referral_commission"
+        )
         .scalar()
         or 0.0
     )
 
-    if amount <= 0:
-        flash("Invalid withdrawal amount.", "danger")
+    # ✅ Step 2: Validate withdrawable amount
+    if withdrawable_amount <= 0:
+        flash("You have no referral commissions available for withdrawal.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    if amount > withdrawable_amount:
-        flash("You can only withdraw referral commissions. Requested amount exceeds withdrawable balance.", "danger")
+    # ✅ Step 3: Minimum withdrawal check
+    if withdrawable_amount < 0.5:
+        flash("Minimum withdrawal amount is KSh 0.50", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Deduct from ReferralLedger (FIFO)
-    ledger_entries = ReferralLedger.query.filter_by(user_id=user.id).order_by(ReferralLedger.created_at.asc()).all()
-    remaining = amount
-    for entry in ledger_entries:
-        if remaining <= 0:
-            break
-        if entry.amount <= remaining:
-            remaining -= entry.amount
-            db.session.delete(entry)  # fully consumed
-        else:
-            entry.amount -= remaining
-            remaining = 0
-
-    # ✅ Do NOT deduct wallet or create transaction yet
-    # ✅ Only create withdrawal request
+    # ✅ Step 4: Create a pending withdrawal request for admin approval
     from .models import ReferralWithdrawal
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
-        amount=amount,
+        amount=withdrawable_amount,
         status="pending"
     )
     db.session.add(withdrawal_request)
+
+    # ✅ IMPORTANT: Do NOT deduct from wallet or Transaction table yet
+    # Deduction happens only when admin approves to prevent double deduction
+
     db.session.commit()
 
-    flash(f"Withdrawal request of KSh {amount:.2f} submitted successfully. Awaiting admin approval.", "success")
+    flash(f"Withdrawal request of KSh {withdrawable_amount:.2f} submitted successfully. Awaiting admin approval.", "success")
     return redirect(url_for("main.referrals_page"))
 
 
