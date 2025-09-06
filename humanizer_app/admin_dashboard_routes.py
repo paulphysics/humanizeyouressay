@@ -110,7 +110,7 @@ def dashboard():
 
 
 @admin_dashboard_bp.route("/approve_withdrawal/<int:withdrawal_id>", methods=["POST"])
-@admin_required
+@auth_required
 def approve_withdrawal(withdrawal_id):
     from app.models import ReferralWithdrawal, Transaction
     withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
