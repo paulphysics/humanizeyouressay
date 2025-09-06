@@ -265,54 +265,46 @@ class UserAdminView(AuthenticatedModelView):
                            recipient=recipient, 
                            admin_balance=admin_balance_display)
 
-class TransactionAdminView(AuthenticatedModelView):
-    column_list = ['wallet.user.email', 'amount', 'transaction_type', 'is_reversed', 'created_at', 'description']
-    column_formatters = {'created_at': _date_formatter}
-    column_labels = {'wallet.user.email': 'User', 'is_reversed': 'Reversed?', 'created_at': 'Date (EAT)'}
-    column_filters = [
-        FilterInList(Transaction.transaction_type, 'Type', options=[('top-up', 'Top-Up'), ('humanize_fee', 'Humanize Fee')]),
-        BooleanEqualFilter(Transaction.is_reversed, 'Reversed?'), DateBetweenFilter(Transaction.created_at, 'Date')
-    ]
-    can_create = False; can_edit = False; can_delete = False
-    column_searchable_list = ['description']
+class TransactionAdminView(ModelView):
+    # Ensure checkboxes are enabled
+    can_view_details = True
+    can_export = True
 
-    def get_query(self):
-        return super().get_query().join(Wallet).join(User)
+    column_list = ('id', 'wallet_id', 'amount', 'transaction_type', 'description', 'is_reversed', 'created_at')
+    column_filters = ('transaction_type', 'is_reversed')
+    column_searchable_list = ('description',)
 
-    def get_count_query(self):
-        return super().get_count_query().join(Wallet).join(User)
+    @action('reverse', 'Reverse Transaction', 'Are you sure you want to reverse the selected transaction(s)?')
+    def action_reverse(self, ids):
+        try:
+            transactions = Transaction.query.filter(Transaction.id.in_(ids)).all()
+            for trans in transactions:
+                if not trans.is_reversed:
+                    # Mark original transaction as reversed
+                    trans.is_reversed = True
 
-@action('reverse', 'Reverse Transaction', 'Are you sure?')
-def action_reverse(self, ids):
-    try:
-        transactions = Transaction.query.filter(Transaction.id.in_(ids)).all()
-        for trans in transactions:
-            if not trans.is_reversed:
-                # Mark original transaction as reversed
-                trans.is_reversed = True
+                    # Create reversal transaction (opposite sign)
+                    reversal_amount = -trans.amount
 
-                # Create reversal transaction (opposite direction)
-                reversal_amount = -trans.amount  # Reverse the sign of the original amount
+                    reversal = Transaction(
+                        wallet_id=trans.wallet_id,
+                        amount=reversal_amount,
+                        transaction_type='reversal',
+                        description=f'Reversal of Transaction ID {trans.id}',
+                        is_reversed=False
+                    )
 
-                reversal = Transaction(
-                    wallet_id=trans.wallet_id,
-                    amount=reversal_amount,
-                    transaction_type='reversal',
-                    description=f'Reversal of Transaction ID {trans.id}',
-                    is_reversed=False
-                )
+                    # Update wallet balance correctly
+                    trans.wallet.balance += -trans.amount  # Undo the original transaction
 
-                # Update wallet balance correctly
-                trans.wallet.balance += -trans.amount  # Reverse the effect of original
+                    # Save reversal transaction
+                    db.session.add(reversal)
 
-                # Save reversal transaction
-                db.session.add(reversal)
-
-        db.session.commit()
-        flash(f'Successfully reversed {len(transactions)} transaction(s).', 'success')
-    except Exception as ex:
-        db.session.rollback()
-        flash(f'Failed to reverse. Error: {ex}', 'error')
+            db.session.commit()
+            flash(f'Successfully reversed {len(transactions)} transaction(s).', 'success')
+        except Exception as ex:
+            db.session.rollback()
+            flash(f'Failed to reverse. Error: {ex}', 'error')
 
 
 class ExpenseAdminView(AuthenticatedModelView):
