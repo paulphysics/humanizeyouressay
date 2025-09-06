@@ -109,47 +109,35 @@ def dashboard():
     return render_template('admin/dashboard.html', **context)
 
 
-@admin_dashboard_bp.route('/approve-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
-@auth_required
-def approve_referral_withdrawal(withdrawal_id):
-    admin_user = User.query.get(session['user']['uid'])
-    if not admin_user or not admin_user.is_admin:
-        return redirect(url_for('main.index'))
-
+@admin_bp.route("/approve_withdrawal/<int:withdrawal_id>", methods=["POST"])
+@admin_required
+def approve_withdrawal(withdrawal_id):
+    from app.models import ReferralWithdrawal, Transaction
     withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
-
-    if withdrawal.status == "approved":
-        flash("This withdrawal has already been approved.", "warning")
-        return redirect(url_for("admin_dashboard.dashboard"))
-
     user = User.query.get_or_404(withdrawal.user_id)
-    amount = withdrawal.amount
 
-    # ✅ Ensure wallet has enough balance
-    if user.wallet.balance < amount:
-        flash("Insufficient wallet balance. Cannot approve withdrawal.", "danger")
-        return redirect(url_for("admin_dashboard.dashboard"))
+    if withdrawal.status != "pending":
+        flash("This withdrawal request has already been processed.", "warning")
+        return redirect(url_for("admin.referral_withdrawals"))
 
-    # ✅ Deduct from wallet (if not already deducted)
-    user.wallet.balance -= amount
-
-    # ✅ Create transaction record
+    # Create withdrawal transaction (negative amount)
     txn = Transaction(
         wallet=user.wallet,
-        amount=-amount,
+        amount=-withdrawal.amount,
         transaction_type="withdrawal",
-        description="Referral withdrawal (Admin Approved)"
+        description="Approved referral commission withdrawal"
     )
     db.session.add(txn)
 
-    # ✅ Update withdrawal status
-    withdrawal.status = "approved"
-    withdrawal.processed_at = datetime.utcnow()
+    # Deduct from wallet balance
+    user.wallet.balance -= withdrawal.amount
 
+    # Update withdrawal request status
+    withdrawal.status = "approved"
     db.session.commit()
 
-    flash(f"Withdrawal of KSh {amount:.2f} approved for {user.name}.", "success")
-    return redirect(url_for("admin_dashboard.dashboard"))
+    flash(f"Withdrawal of KSh {withdrawal.amount:.2f} approved for {user.name}.", "success")
+    return redirect(url_for("admin.referral_withdrawals"))
     
 
 @admin_dashboard_bp.route('/reject-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
