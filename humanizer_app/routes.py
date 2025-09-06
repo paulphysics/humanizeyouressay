@@ -239,13 +239,16 @@ def referrals_page():
         or 0.0
     )
 
-    # Withdrawable balance
     withdrawable_balance = (
-        db.session.query(func.sum(ReferralLedger.amount))
-        .filter_by(user_id=user.id)
-        .scalar()
-        or 0.0
+    db.session.query(func.sum(Transaction.amount))
+    .filter(
+        Transaction.wallet_id == user.wallet.id,
+        Transaction.transaction_type == "referral_commission"
     )
+    .scalar()
+    or 0.0
+    )
+
 
     # Referral counts by level
     referral_counts = {}
