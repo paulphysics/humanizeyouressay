@@ -288,13 +288,30 @@ class TransactionAdminView(AuthenticatedModelView):
             transactions = Transaction.query.filter(Transaction.id.in_(ids)).all()
             for trans in transactions:
                 if not trans.is_reversed:
-                    trans.wallet.balance -= trans.amount
+                    # Mark original transaction as reversed
                     trans.is_reversed = True
+    
+                    # Create reversal transaction
+                    reversal = Transaction(
+                        wallet_id=trans.wallet_id,
+                        amount=-abs(trans.amount),  # negative amount for reversal
+                        transaction_type='reversal',
+                        description=f'Reversal of Transaction ID {trans.id}',
+                        is_reversed=False
+                    )
+    
+                    # Update wallet balance
+                    trans.wallet.balance -= trans.amount
+    
+                    # Save reversal transaction
+                    db.session.add(reversal)
+    
             db.session.commit()
             flash(f'Successfully reversed {len(transactions)} transaction(s).', 'success')
         except Exception as ex:
             db.session.rollback()
             flash(f'Failed to reverse. Error: {ex}', 'error')
+
 
 class ExpenseAdminView(AuthenticatedModelView):
     column_list = ['service_name', 'amount', 'expense_date', 'description']
