@@ -917,7 +917,7 @@ def contact():
 def withdraw_funds():
     user = User.query.get_or_404(session['user']['uid'])
 
-    # ✅ Step 1: Calculate withdrawable amount (only referral commissions)
+    # ✅ Calculate withdrawable amount (only referral commissions)
     withdrawable_amount = (
         db.session.query(func.sum(Transaction.amount))
         .filter(
@@ -928,27 +928,32 @@ def withdraw_funds():
         or 0.0
     )
 
-    # ✅ Step 2: Validate withdrawable amount
+    # ✅ Validate amount
     if withdrawable_amount <= 0:
         flash("You have no referral commissions available for withdrawal.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Step 3: Minimum withdrawal check
     if withdrawable_amount < 0.5:
         flash("Minimum withdrawal amount is KSh 0.50", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Step 4: Create a pending withdrawal request for admin approval
-    from .models import ReferralWithdrawal
+    # ✅ Create Transaction record for history
+    withdrawal_txn = Transaction(
+        wallet_id=user.wallet.id,
+        amount=-withdrawable_amount,
+        transaction_type="withdrawal",
+        status="pending"  # so user sees it in history
+    )
+    db.session.add(withdrawal_txn)
+
+    # ✅ Create ReferralWithdrawal request (optional tracking for admin)
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=withdrawable_amount,
-        status="pending"
+        status="pending",
+        transaction_id=withdrawal_txn.id  # link them
     )
     db.session.add(withdrawal_request)
-
-    # ✅ IMPORTANT: Do NOT deduct from wallet or Transaction table yet
-    # Deduction happens only when admin approves to prevent double deduction
 
     db.session.commit()
 
