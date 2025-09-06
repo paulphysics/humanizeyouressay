@@ -222,112 +222,39 @@ def transaction_history():
 @main_bp.route("/referrals")
 @auth_required
 def referrals_page():
-    """
-    Displays the user's referral statistics, leaderboard, and direct referrals.
-    """
     user = User.query.get_or_404(session['user']['uid'])
-    username = get_display_name(user)
 
-    # Lifetime earnings
-    lifetime_earnings = (
+    # Calculate withdrawable referral commissions
+    referral_earnings = (
         db.session.query(func.sum(Transaction.amount))
         .filter(
             Transaction.wallet_id == user.wallet.id,
-            Transaction.transaction_type.in_(["referral_commission", "referral_signup_bonus"])
+            Transaction.transaction_type == "referral_commission"
         )
         .scalar()
         or 0.0
     )
 
-    withdrawable_balance = (
-    db.session.query(func.sum(Transaction.amount))
-    .filter(
-        Transaction.wallet_id == user.wallet.id,
-        Transaction.transaction_type == "referral_commission"
-    )
-    .scalar()
-    or 0.0
-    )
-
-
-    # Referral counts by level
-    referral_counts = {}
-    for i in range(5):
-        level = i + 1
-        count = User.query.filter(User.upline.like(f"%{user.id}%")).all()
-        level_count = 0
-        for referred_user in count:
-            if referred_user.upline:
-                upline_ids = referred_user.upline.split(',')
-                if len(upline_ids) > i and upline_ids[i] == str(user.id):
-                    level_count += 1
-        referral_counts[level] = level_count
-
-    # Direct referrals with pagination
-    page = request.args.get('page', 1, type=int)
-    per_page = 10
-    referrals = User.query.filter_by(referred_by=user.id).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-
-    # Leaderboard filter
-    filter_option = request.args.get('filter', 'all')  # 'month' or 'all'
-    leaderboard_page = request.args.get('lb_page', 1, type=int)
-    leaderboard_per_page = 20
-
-    leaderboard_query = (
-        db.session.query(
-            User.id,
-            User.name.label("display_name"),
-            func.sum(Transaction.amount).label("total_earnings")
+    withdrawn_amount = (
+        db.session.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.wallet_id == user.wallet.id,
+            Transaction.transaction_type == "withdrawal"
         )
-        .join(Wallet, Wallet.user_id == User.id)
-        .join(Transaction, Transaction.wallet_id == Wallet.id)
-        .filter(Transaction.transaction_type.in_(["referral_commission", "referral_signup_bonus"]))
+        .scalar()
+        or 0.0
     )
 
-    if filter_option == 'month':
-        start_of_month = datetime(datetime.now().year, datetime.now().month, 1)
-        leaderboard_query = leaderboard_query.filter(Transaction.created_at >= start_of_month)
+    withdrawable_balance = referral_earnings + withdrawn_amount  # withdrawn is negative
 
-    leaderboard_query = (
-        leaderboard_query
-        .group_by(User.id, User.name)
-        .order_by(func.sum(Transaction.amount).desc())
-    )
-
-    leaderboard_pagination = leaderboard_query.paginate(
-        page=leaderboard_page, per_page=leaderboard_per_page, error_out=False
-    )
-
-    leaderboard = [
-        ((leaderboard_per_page * (leaderboard_page - 1)) + idx + 1, row.display_name, row.total_earnings)
-        for idx, row in enumerate(leaderboard_pagination.items)
-    ]
-
-    # Determine user's rank
-    user_rank = None
-    all_leaderboard = leaderboard_query.all()
-    for idx, row in enumerate(all_leaderboard, start=1):
-        if row.id == user.id:
-            user_rank = idx
-            break
+    referrals = Referral.query.filter_by(referrer_id=user.id).all()
+    withdrawal_requests = ReferralWithdrawal.query.filter_by(user_id=user.id).order_by(ReferralWithdrawal.created_at.desc()).all()
 
     return render_template(
         "referrals.html",
-        user=user,
-        username=username,
-        wallet_balance=user.wallet.balance,
-        lifetime_earnings=lifetime_earnings,
-        withdrawable_balance=withdrawable_balance,
-        is_admin=user.is_admin,
-        referral_counts=referral_counts,
         referrals=referrals,
-        leaderboard=leaderboard,
-        user_rank=user_rank,
-        page=leaderboard_page,
-        total_pages=leaderboard_pagination.pages,
-        filter_option=filter_option
+        withdrawable_balance=withdrawable_balance,
+        withdrawal_requests=withdrawal_requests
     )
 
 
