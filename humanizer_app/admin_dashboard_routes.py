@@ -1,7 +1,8 @@
 from flask_admin import AdminIndexView
-from flask import Blueprint, render_template, redirect, url_for, session
+from flask import Blueprint, render_template, redirect, url_for, session, request, flask
 from sqlalchemy import func, case
 from datetime import datetime, timedelta
+from .models import ReferralWithdrawal
 import pytz
 
 from .models import db, User, Task, Transaction, Wallet, Conversation
@@ -106,3 +107,76 @@ def dashboard():
     }
 
     return render_template('admin/dashboard.html', **context)
+
+
+@admin_dashboard_bp.route('/approve-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
+@auth_required
+def approve_referral_withdrawal(withdrawal_id):
+    admin_user = User.query.get(session['user']['uid'])
+    if not admin_user or not admin_user.is_admin:
+        return redirect(url_for('main.index'))
+
+    withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
+
+    if withdrawal.status == "approved":
+        flash("This withdrawal has already been approved.", "warning")
+        return redirect(url_for("admin_dashboard.dashboard"))
+
+    user = User.query.get_or_404(withdrawal.user_id)
+    amount = withdrawal.amount
+
+    # ✅ Ensure wallet has enough balance
+    if user.wallet.balance < amount:
+        flash("Insufficient wallet balance. Cannot approve withdrawal.", "danger")
+        return redirect(url_for("admin_dashboard.dashboard"))
+
+    # ✅ Deduct from wallet (if not already deducted)
+    user.wallet.balance -= amount
+
+    # ✅ Create transaction record
+    txn = Transaction(
+        wallet=user.wallet,
+        amount=-amount,
+        transaction_type="withdrawal",
+        description="Referral withdrawal (Admin Approved)"
+    )
+    db.session.add(txn)
+
+    # ✅ Update withdrawal status
+    withdrawal.status = "approved"
+    withdrawal.processed_at = datetime.utcnow()
+
+    db.session.commit()
+
+    flash(f"Withdrawal of KSh {amount:.2f} approved for {user.name}.", "success")
+    return redirect(url_for("admin_dashboard.dashboard"))
+    
+
+@admin_dashboard_bp.route('/reject-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
+@auth_required
+def reject_referral_withdrawal(withdrawal_id):
+    admin_user = User.query.get(session['user']['uid'])
+    if not admin_user or not admin_user.is_admin:
+        return redirect(url_for('main.index'))
+
+    withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
+
+    if withdrawal.status != "pending":
+        flash("This withdrawal cannot be rejected as it is already processed.", "warning")
+        return redirect(url_for("admin_dashboard.dashboard"))
+
+    user = User.query.get_or_404(withdrawal.user_id)
+
+    # ✅ Restore funds to ReferralLedger
+    from .models import ReferralLedger
+    restored_entry = ReferralLedger(user_id=user.id, amount=withdrawal.amount)
+    db.session.add(restored_entry)
+
+    # ✅ Update withdrawal status
+    withdrawal.status = "rejected"
+    withdrawal.processed_at = datetime.utcnow()
+
+    db.session.commit()
+
+    flash(f"Withdrawal of KSh {withdrawal.amount:.2f} rejected for {user.name}. Amount restored.", "success")
+    return redirect(url_for("admin_dashboard.dashboard"))
