@@ -906,18 +906,28 @@ def withdraw_funds():
     user = User.query.get_or_404(session['user']['uid'])
     amount = float(request.form.get("amount", 0))
 
-    # Step 3: Calculate how much is withdrawable (referral commissions only)
-    withdrawable_amount = db.session.query(func.sum(ReferralLedger.amount)).filter_by(user_id=user.id).scalar() or 0.0
+    # Step 1: Minimum withdrawal check
+    if amount < 0.5:
+        flash("Minimum withdrawal amount is KSh 0.50", "danger")
+        return redirect(url_for("main.referrals_page"))
+
+    # Step 2: Calculate withdrawable amount from ReferralLedger
+    withdrawable_amount = (
+        db.session.query(func.sum(ReferralLedger.amount))
+        .filter_by(user_id=user.id)
+        .scalar()
+        or 0.0
+    )
 
     if amount <= 0:
         flash("Invalid withdrawal amount.", "danger")
-        return redirect(url_for("main.wallet_page"))
+        return redirect(url_for("main.referrals_page"))
 
     if amount > withdrawable_amount:
         flash("You can only withdraw referral commissions. Requested amount exceeds withdrawable balance.", "danger")
-        return redirect(url_for("main.wallet_page"))
+        return redirect(url_for("main.referrals_page"))
 
-    # Deduct from referral ledger (so commissions aren't double-spent)
+    # Deduct from referral ledger (FIFO)
     ledger_entries = ReferralLedger.query.filter_by(user_id=user.id).order_by(ReferralLedger.created_at.asc()).all()
     remaining = amount
     for entry in ledger_entries:
@@ -930,7 +940,7 @@ def withdraw_funds():
             entry.amount -= remaining
             remaining = 0
 
-    # Create withdrawal transaction (still visible in history)
+    # Record withdrawal in transactions
     txn = Transaction(
         wallet=user.wallet,
         amount=-amount,
@@ -942,8 +952,8 @@ def withdraw_funds():
     # Deduct from wallet balance
     user.wallet.balance -= amount
 
-    # 🔹 NEW: Create referral withdrawal request (for admin processing)
-    from .models import ReferralWithdrawal  # local import to avoid circular issues
+    # Create referral withdrawal request for admin processing
+    from .models import ReferralWithdrawal
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=amount,
@@ -954,7 +964,7 @@ def withdraw_funds():
     db.session.commit()
 
     flash(f"Withdrawal request of KSh {amount:.2f} submitted successfully. Awaiting admin approval.", "success")
-    return redirect(url_for("main.wallet_page"))
+    return redirect(url_for("main.referrals_page"))
 
 
 @main_bp.route("/get_conversations", methods=['GET'])
