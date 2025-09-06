@@ -927,7 +927,7 @@ def withdraw_funds():
         flash("You can only withdraw referral commissions. Requested amount exceeds withdrawable balance.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # Deduct from referral ledger (FIFO)
+    # ✅ Deduct from ReferralLedger (FIFO)
     ledger_entries = ReferralLedger.query.filter_by(user_id=user.id).order_by(ReferralLedger.created_at.asc()).all()
     remaining = amount
     for entry in ledger_entries:
@@ -940,19 +940,8 @@ def withdraw_funds():
             entry.amount -= remaining
             remaining = 0
 
-    # Record withdrawal in transactions
-    txn = Transaction(
-        wallet=user.wallet,
-        amount=-amount,
-        transaction_type="withdrawal",
-        description="Referral commission withdrawal"
-    )
-    db.session.add(txn)
-
-    # Deduct from wallet balance
-    user.wallet.balance -= amount
-
-    # Create referral withdrawal request for admin processing
+    # ✅ Do NOT deduct wallet or create transaction yet
+    # ✅ Only create withdrawal request
     from .models import ReferralWithdrawal
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
@@ -960,7 +949,6 @@ def withdraw_funds():
         status="pending"
     )
     db.session.add(withdrawal_request)
-
     db.session.commit()
 
     flash(f"Withdrawal request of KSh {amount:.2f} submitted successfully. Awaiting admin approval.", "success")
