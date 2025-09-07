@@ -90,11 +90,14 @@ def create_app():
         redis_url += "?ssl_cert_reqs=CERT_NONE"
     
     app.config.from_mapping(
-        CELERY=dict(
-            broker_url=redis_url,
-            result_backend=redis_url,
-            task_ignore_result=True,
-            broker_connection_retry_on_startup=True
+    CELERY=dict(
+        broker_url=redis_url,
+        result_backend=redis_url,
+        task_ignore_result=False,   # ⬅️ must be False to fetch results
+        broker_connection_retry_on_startup=True,
+        task_time_limit=600,        # ⬅️ allow long replies
+        task_soft_time_limit=540,
+        result_expires=3600,        # keep results 1 hour
         ),
     )
     # ----------------------------------------
