@@ -108,11 +108,9 @@ def dashboard():
 
     return render_template('admin/dashboard.html', **context)
 
-
 @admin_dashboard_bp.route("/approve_withdrawal/<int:withdrawal_id>", methods=["POST"])
 @auth_required
 def approve_withdrawal(withdrawal_id):
-    from app.models import ReferralWithdrawal
     withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
     user = User.query.get_or_404(withdrawal.user_id)
 
@@ -120,41 +118,50 @@ def approve_withdrawal(withdrawal_id):
         flash("This withdrawal request has already been processed.", "warning")
         return redirect(url_for("admin.referral_withdrawals"))
 
-    # ✅ Do NOT deduct again (already deducted during user request)
-    # ✅ Just mark as approved
+    # ✅ Mark as approved and timestamp
     withdrawal.status = "approved"
+    withdrawal.processed_at = datetime.utcnow()
 
     db.session.commit()
 
     flash(f"Withdrawal of KSh {withdrawal.amount:.2f} approved for {user.name}.", "success")
     return redirect(url_for("admin.referral_withdrawals"))
-    
+
 
 @admin_dashboard_bp.route('/reject-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
 @auth_required
 def reject_referral_withdrawal(withdrawal_id):
-    admin_user = User.query.get(session['user']['uid'])
-    if not admin_user or not admin_user.is_admin:
-        return redirect(url_for('main.index'))
-
     withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
+    user = User.query.get_or_404(withdrawal.user_id)
 
     if withdrawal.status != "pending":
         flash("This withdrawal cannot be rejected as it is already processed.", "warning")
-        return redirect(url_for("admin_dashboard.dashboard"))
+        return redirect(url_for("admin.referral_withdrawals"))
 
-    user = User.query.get_or_404(withdrawal.user_id)
+    try:
+        with db.session.begin_nested():
+            # ✅ Restore wallet balance
+            user.wallet.balance += withdrawal.amount
 
-    # ✅ Restore funds to ReferralLedger
-    from .models import ReferralLedger
-    restored_entry = ReferralLedger(user_id=user.id, amount=withdrawal.amount)
-    db.session.add(restored_entry)
+            # ✅ Add reversal transaction for history
+            reversal_txn = Transaction(
+                wallet_id=user.wallet.id,
+                amount=withdrawal.amount,
+                transaction_type="withdrawal_reversal",
+                description=f"Reversal of rejected withdrawal (ID {withdrawal.id})"
+            )
+            db.session.add(reversal_txn)
 
-    # ✅ Update withdrawal status
-    withdrawal.status = "rejected"
-    withdrawal.processed_at = datetime.utcnow()
+            # ✅ Update withdrawal status
+            withdrawal.status = "rejected"
+            withdrawal.processed_at = datetime.utcnow()
 
-    db.session.commit()
+        db.session.commit()
 
-    flash(f"Withdrawal of KSh {withdrawal.amount:.2f} rejected for {user.name}. Amount restored.", "success")
-    return redirect(url_for("admin_dashboard.dashboard"))
+        flash(f"Withdrawal of KSh {withdrawal.amount:.2f} rejected for {user.name}. Amount restored.", "success")
+        return redirect(url_for("admin.referral_withdrawals"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash("An error occurred while rejecting withdrawal.", "danger")
+        return redirect(url_for("admin.referral_withdrawals"))
