@@ -53,6 +53,17 @@ def redirect_non_www_to_www():
         new_url = f"{request.scheme}://{new_host}{request.full_path}"
         return redirect(new_url, code=301)
 
+@main_bp.before_request
+def block_admins_from_user_routes():
+    # Check if user is logged in
+    user_id = session.get("user", {}).get("uid")
+    if not user_id:
+        return  # let your @auth_required handle this
+    
+    user = User.query.get(user_id)
+    if user and getattr(user, "is_admin", False):
+        abort(403)
+
 
 KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
 logger = logging.getLogger(__name__)
