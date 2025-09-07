@@ -17,7 +17,7 @@ depends_on = None
 
 def upgrade():
     print("Adding processed_at column to referral_withdrawals...")
-    op.add_column('referral_withdrawals', sa.Column('processed_at', sa.DateTime(), nullable=True))
+    # op.add_column('referral_withdrawals', sa.Column('processed_at', sa.DateTime(), nullable=True))
     print("Column processed_at added successfully.")
 
 
