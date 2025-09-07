@@ -141,7 +141,7 @@
                 </table>
             </div>
 
-            <!-- Pagination controls (Direct Referrals) -->
+            <!-- Pagination controls -->
             <div class="flex justify-between items-center mt-4">
                 <div>
                     Page {{ referrals.page }} of {{ referrals.pages }}
@@ -219,14 +219,18 @@
     function copyReferralCode() {
         const referralCode = document.getElementById('referralCode').innerText;
         navigator.clipboard.writeText(referralCode).then(() => {
-            window.App?.showAlert
-                ? window.App.showAlert('Referral code copied to clipboard!', 'success')
-                : alert('Referral code copied to clipboard!');
+            if (typeof showAlert === 'function') {
+                showAlert('Referral code copied to clipboard!', 'success');
+            } else {
+                alert('Referral code copied to clipboard!');
+            }
         }).catch(err => {
             console.error('Failed to copy referral code: ', err);
-            window.App?.showAlert
-                ? window.App.showAlert('Failed to copy code.', 'danger')
-                : alert('Failed to copy code.');
+            if (typeof showAlert === 'function') {
+                showAlert('Failed to copy code.', 'danger');
+            } else {
+                alert('Failed to copy code.');
+            }
         });
     }
 
@@ -238,6 +242,11 @@
         button.disabled = true;
         text.textContent = 'Processing...';
         spinner.classList.remove('hidden');
+
+        // ✅ Custom alert using your existing alert system
+        if (typeof showAlert === 'function') {
+            showAlert('Your withdrawal request is being processed. Please do not refresh or click again.', 'info');
+        }
     }
 </script>
 {% endblock %}
