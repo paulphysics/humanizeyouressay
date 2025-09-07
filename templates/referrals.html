@@ -215,6 +215,9 @@
     </div>
 </main>
 
+<!-- ✅ Load script.js for showAlert function -->
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
 <script>
     function copyReferralCode() {
         const referralCode = document.getElementById('referralCode').innerText;
@@ -243,7 +246,7 @@
         text.textContent = 'Processing...';
         spinner.classList.remove('hidden');
 
-        // ✅ Custom alert using your existing alert system
+        // ✅ Custom alert
         if (typeof showAlert === 'function') {
             showAlert('Your withdrawal request is being processed. Please do not refresh or click again.', 'info');
         }
