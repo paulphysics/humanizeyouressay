@@ -954,8 +954,7 @@ def withdraw_funds():
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=withdrawable_amount,
-        status="pending",
-        transaction_id=None  # optional if you don't want to link
+        status="pending"
     )
     db.session.add(withdrawal_request)
 
