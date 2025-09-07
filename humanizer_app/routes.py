@@ -933,8 +933,8 @@ def withdraw_funds():
         flash("You have no referral commissions available for withdrawal.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    if withdrawable_amount < 0.5:
-        flash("Minimum withdrawal amount is KSh 0.50", "danger")
+    if withdrawable_amount < 1000:
+        flash("Minimum withdrawal amount is KSh 1000", "danger")
         return redirect(url_for("main.referrals_page"))
 
     # ✅ Deduct from wallet immediately
