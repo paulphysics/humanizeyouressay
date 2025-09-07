@@ -933,7 +933,7 @@ def withdraw_funds():
         flash("You have no referral commissions available for withdrawal.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    if withdrawable_amount < 1000:
+    if withdrawable_amount < 1:
         flash("Minimum withdrawal amount is KSh 1000", "danger")
         return redirect(url_for("main.referrals_page"))
 
