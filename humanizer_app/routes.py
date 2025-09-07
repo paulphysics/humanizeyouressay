@@ -915,6 +915,8 @@ def contact():
 @main_bp.route("/withdraw", methods=["POST"])
 @auth_required
 def withdraw_funds():
+    from app.models import ReferralWithdrawal, Transaction, User
+
     user = User.query.get_or_404(session['user']['uid'])
 
     # ✅ Calculate withdrawable amount (only referral commissions)
@@ -937,11 +939,29 @@ def withdraw_funds():
         flash("Minimum withdrawal amount is KSh 0.50", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Create withdrawal request (tracking for admin)
+    # ✅ Deduct immediately from wallet balance
+    if user.wallet.balance < withdrawable_amount:
+        flash("Insufficient balance in your wallet to process withdrawal.", "danger")
+        return redirect(url_for("main.referrals_page"))
+
+    user.wallet.balance -= withdrawable_amount
+
+    # ✅ Create Transaction record for history
+    withdrawal_txn = Transaction(
+        wallet_id=user.wallet.id,
+        amount=-withdrawable_amount,
+        transaction_type="withdrawal",
+        status="pending",
+        description="Referral withdrawal request submitted"
+    )
+    db.session.add(withdrawal_txn)
+
+    # ✅ Create ReferralWithdrawal request for admin tracking
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=withdrawable_amount,
-        status="pending"
+        status="pending",
+        transaction_id=None  # optional, can be linked later
     )
     db.session.add(withdrawal_request)
 
@@ -949,7 +969,6 @@ def withdraw_funds():
 
     flash(f"Withdrawal request of KSh {withdrawable_amount:.2f} submitted successfully. Awaiting admin approval.", "success")
     return redirect(url_for("main.referrals_page"))
-
 
 
 @main_bp.route("/get_conversations", methods=['GET'])
