@@ -928,40 +928,57 @@ def withdraw_funds():
         or 0.0
     )
 
-    # ✅ Validate amount
+    # ✅ Validate withdrawable amount
     if withdrawable_amount <= 0:
         flash("You have no referral commissions available for withdrawal.", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    if withdrawable_amount < 1:
+    # ✅ Ensure minimum withdrawal amount is respected
+    if withdrawable_amount < 1000:
         flash("Minimum withdrawal amount is KSh 1000", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Deduct from wallet immediately
-    user.wallet.balance -= withdrawable_amount
+    # ✅ Ensure wallet has enough balance (avoid negative)
+    if user.wallet.balance < withdrawable_amount:
+        withdrawable_amount = user.wallet.balance  # cap withdrawal to current balance
 
-    # ✅ Create Transaction for history
-    withdrawal_txn = Transaction(
-        wallet_id=user.wallet.id,
-        amount=-withdrawable_amount,
-        transaction_type="withdrawal",
-        description="Referral withdrawal request submitted"
-    )
-    db.session.add(withdrawal_txn)
+    if withdrawable_amount <= 0:
+        flash("Insufficient wallet balance for withdrawal.", "danger")
+        return redirect(url_for("main.referrals_page"))
 
-    # ✅ Create ReferralWithdrawal request for admin approval
-    from .models import ReferralWithdrawal
-    withdrawal_request = ReferralWithdrawal(
-        user_id=user.id,
-        amount=withdrawable_amount,
-        status="pending"
-    )
-    db.session.add(withdrawal_request)
+    try:
+        # ✅ Use transaction block for safety
+        with db.session.begin_nested():
+            # ✅ Deduct from wallet immediately
+            user.wallet.balance -= withdrawable_amount
 
-    db.session.commit()
+            # ✅ Create transaction for history
+            withdrawal_txn = Transaction(
+                wallet_id=user.wallet.id,
+                amount=-withdrawable_amount,
+                transaction_type="withdrawal",
+                description="Referral withdrawal request submitted"
+            )
+            db.session.add(withdrawal_txn)
 
-    flash(f"Withdrawal request of KSh {withdrawable_amount:.2f} submitted successfully. Awaiting admin approval.", "success")
-    return redirect(url_for("main.referrals_page"))
+            # ✅ Create ReferralWithdrawal request for admin approval
+            from .models import ReferralWithdrawal
+            withdrawal_request = ReferralWithdrawal(
+                user_id=user.id,
+                amount=withdrawable_amount,
+                status="pending"
+            )
+            db.session.add(withdrawal_request)
+
+        db.session.commit()
+
+        flash(f"Withdrawal request of KSh {withdrawable_amount:.2f} submitted successfully. Awaiting admin approval.", "success")
+        return redirect(url_for("main.referrals_page"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash("An error occurred while processing your withdrawal. Please try again.", "danger")
+        return redirect(url_for("main.referrals_page"))
 
 
 @main_bp.route("/get_conversations", methods=['GET'])
