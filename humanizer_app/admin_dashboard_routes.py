@@ -120,26 +120,21 @@ def approve_withdrawal(withdrawal_id):
         flash("This withdrawal request has already been processed.", "warning")
         return redirect(url_for("admin.referral_withdrawals"))
 
-    # ✅ Find existing pending transaction for this withdrawal
-    txn = Transaction.query.filter_by(id=withdrawal.transaction_id).first()
+    # ✅ Deduct from wallet balance
+    if user.wallet.balance < withdrawal.amount:
+        flash("Insufficient wallet balance to process this withdrawal.", "danger")
+        return redirect(url_for("admin.referral_withdrawals"))
 
-    if txn:
-        # ✅ Just update existing transaction
-        txn.status = "completed"
-        txn.description = "Approved referral commission withdrawal"
-    else:
-        # ✅ If for some reason no linked transaction exists, create one
-        txn = Transaction(
-            wallet=user.wallet,
-            amount=-withdrawal.amount,
-            transaction_type="withdrawal",
-            description="Approved referral commission withdrawal",
-            status="completed"
-        )
-        db.session.add(txn)
-
-    # ✅ Deduct from wallet balance (only now)
     user.wallet.balance -= withdrawal.amount
+
+    # ✅ Create a Transaction record
+    txn = Transaction(
+        wallet_id=user.wallet.id,
+        amount=-withdrawal.amount,
+        transaction_type="withdrawal",
+        description="Approved referral commission withdrawal"
+    )
+    db.session.add(txn)
 
     # ✅ Mark withdrawal as approved
     withdrawal.status = "approved"
@@ -148,7 +143,6 @@ def approve_withdrawal(withdrawal_id):
 
     flash(f"Withdrawal of KSh {withdrawal.amount:.2f} approved for {user.name}.", "success")
     return redirect(url_for("admin.referral_withdrawals"))
-
     
 
 @admin_dashboard_bp.route('/reject-referral-withdrawal/<int:withdrawal_id>', methods=['POST'])
