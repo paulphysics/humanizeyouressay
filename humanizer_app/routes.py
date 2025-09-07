@@ -25,7 +25,7 @@ from googlesearch import search as google_search
 # --- END NEW IMPORTS ---
 
 from .extensions import db
-from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage, ReferralLedger
+from .models import Task, User, Wallet, Transaction, Conversation, ChatMessage, ReferralLedger, ReferralWithdrawal
 from .payment_service import (initiate_payhero_payment, WORDS_PER_UNIT,
                               PRICE_PER_UNIT, ESSAY_PRICE_PER_UNIT)
 from .document_formatter import create_formatted_document
