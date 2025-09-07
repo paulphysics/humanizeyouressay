@@ -18,7 +18,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     # --- NEW: Phone number for withdrawals ---
-    phone_number = db.Column(db.String(20), unique=True, nullable=False)
+    phone_number = db.Column(db.String(20), unique=True, nullable=True)
 
     # --- REFERRAL SYSTEM ADDITIONS START ---
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
