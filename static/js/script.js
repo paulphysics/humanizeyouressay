@@ -422,59 +422,89 @@
       return { messageContainer, messageBubble };
     }
 
+    // Global registry of active pollers
+    const activePollers = {};
+    
     // Poll for async task results (playground)
-    function pollForTaskResult(taskId, messageContainer, messageBubble) {
-      let attempts = 0;
-      pollingInterval = setInterval(async () => {
-        attempts++;
-        if (attempts > 60) {
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-          messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
-          showProcessing(false);
-          return;
-        }
+    function pollForTaskResult(taskId, messageContainer, messageBubble, delay = 1500, attempts = 0) {
+      // If this taskId was aborted, stop immediately
+      if (activePollers[taskId]?.aborted) return;
+    
+      if (attempts > 60) {
+        messageBubble.innerHTML = `<p class="text-red-500">Error: The request timed out. Please try again.</p>`;
+        showProcessing(false);
+        delete activePollers[taskId];
+        return;
+      }
+    
+      const timerId = setTimeout(async () => {
         try {
           const response = await fetch(`/get_playground_task_status/${taskId}`);
           if (!response.ok) {
             if (response.status !== 404 || attempts > 5) {
               throw new Error("Failed to get task status from server.");
             }
-            return;
+            return pollForTaskResult(taskId, messageContainer, messageBubble, delay, attempts + 1);
           }
+    
           const data = await response.json();
           if (data.status === "complete") {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
             messageBubble.innerHTML = markdownToHtml(data.response);
             showProcessing(false);
-
-            // ✅ FIX: Add this line to render the action buttons
+    
             addMessageActions(messageContainer, data.response);
-
+    
             if (data.conversation_title && DOM.conversationList) {
               const convItem = DOM.conversationList.querySelector(`[data-conv-id="${data.conversation_id}"]`);
               if (convItem) {
-                const titleSpan = convItem.querySelector("span").textContent = data.conversation_title;
+                convItem.querySelector("span").textContent = data.conversation_title;
               }
             }
             highlightCodeBlocks();
-          } else if (data.status === "failed") {
-            // ✅ FIX: Stop polling and spinner on failed status
-            clearInterval(pollingInterval);
-            pollingInterval = null;
+    
+            delete activePollers[taskId]; // ✅ stop tracking
+            return;
+          }
+    
+          if (data.status === "failed") {
             messageBubble.innerHTML = `<p class="text-red-500">Error: ${data.error || "Processing failed."}</p>`;
             showProcessing(false);
+            delete activePollers[taskId];
+            return;
           }
+    
+          // Still processing → backoff and retry
+          const nextDelay = Math.min(delay * 1.5, 10000);
+          pollForTaskResult(taskId, messageContainer, messageBubble, nextDelay, attempts + 1);
+    
         } catch (err) {
-          // ✅ FIX: Stop polling and spinner on network/server errors
-          clearInterval(pollingInterval);
-          pollingInterval = null;
           messageBubble.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
           showProcessing(false);
+          delete activePollers[taskId];
         }
-      }, 1000);
+      }, delay);
+    
+      // Register or update this poller
+      activePollers[taskId] = { timerId, aborted: false };
     }
+    
+    // Utility: abort a poller manually
+    function abortPoller(taskId) {
+      const poller = activePollers[taskId];
+      if (poller) {
+        clearTimeout(poller.timerId);
+        poller.aborted = true;
+        delete activePollers[taskId];
+      }
+    }
+    
+    // Utility: abort all pollers (e.g. on page navigation)
+    function abortAllPollers() {
+      for (const taskId in activePollers) {
+        abortPoller(taskId);
+      }
+    }
+
 
     // File handling, extracting text for docs, or encoding images
     async function handleFiles(files) {
