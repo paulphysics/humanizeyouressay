@@ -125,7 +125,9 @@ def process_playground_chat_task(self, task_id: int):
             raise ValueError(f"Conversation {conversation_id} not found.")
 
         message_history = []
-        past_messages = ChatMessage.query.filter_by(conversation_id=conversation.id).order_by(ChatMessage.created_at.asc()).all()
+        past_messages = ChatMessage.query.filter_by(
+            conversation_id=conversation.id
+        ).order_by(ChatMessage.created_at.asc()).all()
 
         for msg in past_messages:
             if msg.role == 'user':
@@ -158,18 +160,35 @@ def process_playground_chat_task(self, task_id: int):
         if not model_info:
             raise Exception(f"Unknown model key: {model_key}")
 
+        # --- EARLY BALANCE CHECK ---
+        user = task.user
+        price_per_word = model_info['price_per_word']
+        estimated_max_words = model_info.get('max_output_words', 2000)
+        estimated_cost = estimated_max_words * price_per_word
+
+        if not user or not user.wallet or user.wallet.balance < estimated_cost:
+            task.status = 'humanization_failed'
+            task.error_message = """
+                <div class="alert alert-danger" role="alert">
+                  Sorry! Insufficient funds! Please top up
+                  to continue.
+                </div>
+            """
+            db.session.commit()
+            return
+        # --- END EARLY CHECK ---
+
         model_identities = {
             "gpt-5": "You are a helpful assistant powered by ChatGPT 5. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
             "gpt-4o": "You are a helpful assistant powered by ChatGPT 4o. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).",
         }
 
-        system_identity = model_identities.get(model_key, "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```).")
+        system_identity = model_identities.get(
+            model_key,
+            "You are a helpful assistant. Format all of your responses using Github Flavored Markdown. For all code snippets, you must use markdown code blocks (e.g., ```python ... ```)."
+        )
         
-        system_prompt = {
-            "role": "system",
-            "content": system_identity
-        }
-        
+        system_prompt = {"role": "system", "content": system_identity}
         final_messages = [system_prompt] + message_history
 
         output_text = ""
@@ -182,7 +201,6 @@ def process_playground_chat_task(self, task_id: int):
             gemini_messages = []
             for message in final_messages:
                 role = "user" if message["role"] in ["user", "system"] else "model"
-                
                 content = message["content"]
                 parts = []
 
@@ -198,7 +216,6 @@ def process_playground_chat_task(self, task_id: int):
 
             response = gemini_model.generate_content(gemini_messages)
             
-            # +++ START OF MODIFIED CODE +++
             try:
                 output_text = response.text
             except ValueError:
@@ -206,7 +223,6 @@ def process_playground_chat_task(self, task_id: int):
                 error_message = f"The AI model did not return a valid response. This can happen if the prompt violates safety policies. (Reason: {finish_reason})"
                 logger.warning(f"Gemini response for task {task.id} was blocked or empty. Reason: {finish_reason}")
                 output_text = error_message
-            # +++ END OF MODIFIED CODE +++
 
         elif "gpt" in model_key:
             response = openai_client.chat.completions.create(
@@ -221,7 +237,9 @@ def process_playground_chat_task(self, task_id: int):
             try:
                 try:
                     user_content_parts = json.loads(past_messages[0].content)
-                    user_prompt_for_title = " ".join(part.get("text", "") for part in user_content_parts if part.get("type") == "input_text")
+                    user_prompt_for_title = " ".join(
+                        part.get("text", "") for part in user_content_parts if part.get("type") == "input_text"
+                    )
                 except (json.JSONDecodeError, TypeError):
                     user_prompt_for_title = past_messages[0].content
 
@@ -250,12 +268,10 @@ def process_playground_chat_task(self, task_id: int):
                 logger.warning(f"Title generation failed for CONV-{conversation.id}, using default. Error: {te}")
                 db.session.rollback()
 
-        user = task.user
-        price_per_word = model_info['price_per_word']
+        # --- POST-GENERATION BILLING ---
         output_word_count = count_words(output_text)
         total_cost = output_word_count * price_per_word
 
-        # --- MODIFIED INSUFFICIENT FUNDS HANDLING ---
         if user.wallet.balance < total_cost:
             task.status = 'humanization_failed'
             task.error_message = """
@@ -266,9 +282,7 @@ def process_playground_chat_task(self, task_id: int):
             """
             db.session.commit()
             return
-        # --- END MODIFIED SECTION ---
 
-        # --- BILLING AND COMMISSION LOGIC ---
         user.wallet.balance -= total_cost
         db.session.add(Transaction(
             wallet_id=user.wallet.id,
@@ -277,11 +291,10 @@ def process_playground_chat_task(self, task_id: int):
             description=f"CONV-{conversation.id}: {output_word_count} words"
         ))
         
-        # --- REFERRAL COMMISSION LOGIC START ---
         if user.referred_by:
             referrer = User.query.get(user.referred_by)
             if referrer and referrer.wallet:
-                commission_amount = total_cost * 0.10  # 10% commission
+                commission_amount = total_cost * 0.10
                 referrer.wallet.balance += commission_amount
                 db.session.add(Transaction(
                     wallet_id=referrer.wallet.id,
@@ -289,9 +302,12 @@ def process_playground_chat_task(self, task_id: int):
                     transaction_type='referral_commission',
                     description=f'10% commission from {user.email} (Playground)'
                 ))
-        # --- REFERRAL COMMISSION LOGIC END ---
 
-        db.session.add(ChatMessage(conversation_id=conversation.id, role='assistant', content=output_text))
+        db.session.add(ChatMessage(
+            conversation_id=conversation.id,
+            role='assistant',
+            content=output_text
+        ))
 
         task.humanized_output = output_text
         task.status = 'humanization_complete'
