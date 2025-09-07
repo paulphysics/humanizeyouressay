@@ -57,7 +57,7 @@
                     KSh {{ "%.2f"|format(withdrawable_balance) }}
                 </p>
 
-                {% if withdrawable_balance|float >= 1000 %}
+                {% if withdrawable_balance|float >= 1 %}
                 <form action="{{ url_for('main.withdraw_funds') }}" method="POST" class="mt-4" onsubmit="handleWithdrawClick(this)">
                     <input type="hidden" name="amount" value="{{ withdrawable_balance }}">
                     <button type="submit" id="withdrawBtn"
