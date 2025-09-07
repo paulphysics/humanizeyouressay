@@ -937,21 +937,11 @@ def withdraw_funds():
         flash("Minimum withdrawal amount is KSh 0.50", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Create Transaction record for history
-    withdrawal_txn = Transaction(
-        wallet_id=user.wallet.id,
-        amount=-withdrawable_amount,
-        transaction_type="withdrawal",
-        status="pending"  # so user sees it in history
-    )
-    db.session.add(withdrawal_txn)
-
-    # ✅ Create ReferralWithdrawal request (optional tracking for admin)
+    # ✅ Create withdrawal request (tracking for admin)
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=withdrawable_amount,
-        status="pending",
-        transaction_id=withdrawal_txn.id  # link them
+        status="pending"
     )
     db.session.add(withdrawal_request)
 
@@ -959,6 +949,7 @@ def withdraw_funds():
 
     flash(f"Withdrawal request of KSh {withdrawable_amount:.2f} submitted successfully. Awaiting admin approval.", "success")
     return redirect(url_for("main.referrals_page"))
+
 
 
 @main_bp.route("/get_conversations", methods=['GET'])
