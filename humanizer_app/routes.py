@@ -54,15 +54,16 @@ def redirect_non_www_to_www():
         return redirect(new_url, code=301)
 
 @main_bp.before_request
-def block_admins_from_user_routes():
-    # Check if user is logged in
+def redirect_admins_from_user_routes():
+    # Only check if logged in
     user_id = session.get("user", {}).get("uid")
     if not user_id:
-        return  # let your @auth_required handle this
-    
+        return  # let @auth_required handle unauthenticated users
+
     user = User.query.get(user_id)
     if user and getattr(user, "is_admin", False):
-        abort(403)
+        # Redirect admins to the admin dashboard
+        return redirect(url_for("admin.dashboard"))
 
 
 KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
