@@ -915,7 +915,7 @@ def contact():
 @main_bp.route("/withdraw", methods=["POST"])
 @auth_required
 def withdraw_funds():
-    from app.models import ReferralWithdrawal, Transaction, User
+    from humanizer_app.models import ReferralWithdrawal, Transaction, User
 
     user = User.query.get_or_404(session['user']['uid'])
 
