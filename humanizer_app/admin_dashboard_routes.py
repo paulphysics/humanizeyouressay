@@ -112,7 +112,8 @@ def dashboard():
 @admin_dashboard_bp.route("/approve_withdrawal/<int:withdrawal_id>", methods=["POST"])
 @auth_required
 def approve_withdrawal(withdrawal_id):
-    from app.models import ReferralWithdrawal, Transaction
+    from app.models import ReferralWithdrawal, Transaction, User
+
     withdrawal = ReferralWithdrawal.query.get_or_404(withdrawal_id)
     user = User.query.get_or_404(withdrawal.user_id)
 
@@ -120,23 +121,24 @@ def approve_withdrawal(withdrawal_id):
         flash("This withdrawal request has already been processed.", "warning")
         return redirect(url_for("admin.referral_withdrawals"))
 
-    # ✅ Deduct from wallet balance
-    if user.wallet.balance < withdrawal.amount:
-        flash("Insufficient wallet balance to process this withdrawal.", "danger")
-        return redirect(url_for("admin.referral_withdrawals"))
+    # ✅ Update related transaction if exists
+    txn = Transaction.query.filter_by(wallet_id=user.wallet.id, amount=-withdrawal.amount, transaction_type="withdrawal").first()
 
-    user.wallet.balance -= withdrawal.amount
+    if txn:
+        txn.status = "completed"
+        txn.description = "Approved referral commission withdrawal"
+    else:
+        # In case transaction was not created, create one (shouldn't normally happen)
+        txn = Transaction(
+            wallet=user.wallet,
+            amount=-withdrawal.amount,
+            transaction_type="withdrawal",
+            description="Approved referral commission withdrawal",
+            status="completed"
+        )
+        db.session.add(txn)
 
-    # ✅ Create a Transaction record
-    txn = Transaction(
-        wallet_id=user.wallet.id,
-        amount=-withdrawal.amount,
-        transaction_type="withdrawal",
-        description="Approved referral commission withdrawal"
-    )
-    db.session.add(txn)
-
-    # ✅ Mark withdrawal as approved
+    # ✅ DO NOT deduct wallet balance again (already deducted)
     withdrawal.status = "approved"
 
     db.session.commit()
