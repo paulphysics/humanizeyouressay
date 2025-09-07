@@ -915,8 +915,6 @@ def contact():
 @main_bp.route("/withdraw", methods=["POST"])
 @auth_required
 def withdraw_funds():
-    from humanizer_app.models import ReferralWithdrawal, Transaction, User
-
     user = User.query.get_or_404(session['user']['uid'])
 
     # ✅ Calculate withdrawable amount (only referral commissions)
@@ -939,29 +937,25 @@ def withdraw_funds():
         flash("Minimum withdrawal amount is KSh 0.50", "danger")
         return redirect(url_for("main.referrals_page"))
 
-    # ✅ Deduct immediately from wallet balance
-    if user.wallet.balance < withdrawable_amount:
-        flash("Insufficient balance in your wallet to process withdrawal.", "danger")
-        return redirect(url_for("main.referrals_page"))
-
+    # ✅ Deduct from wallet immediately
     user.wallet.balance -= withdrawable_amount
 
-    # ✅ Create Transaction record for history
+    # ✅ Create Transaction for history
     withdrawal_txn = Transaction(
         wallet_id=user.wallet.id,
         amount=-withdrawable_amount,
         transaction_type="withdrawal",
-        status="pending",
         description="Referral withdrawal request submitted"
     )
     db.session.add(withdrawal_txn)
 
-    # ✅ Create ReferralWithdrawal request for admin tracking
+    # ✅ Create ReferralWithdrawal request for admin approval
+    from .models import ReferralWithdrawal
     withdrawal_request = ReferralWithdrawal(
         user_id=user.id,
         amount=withdrawable_amount,
         status="pending",
-        transaction_id=None  # optional, can be linked later
+        transaction_id=None  # optional if you don't want to link
     )
     db.session.add(withdrawal_request)
 
