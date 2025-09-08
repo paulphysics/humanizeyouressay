@@ -69,30 +69,73 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
         debug_info="All OpenAI models failed to generate a response."
     )
 
-def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
-    # This function remains unchanged
-    if not paragraph or not paragraph.strip():
-        return paragraph, True
-    sanitized_paragraph = paragraph.replace('’', "'").replace('‘', "'").replace('”', '"').replace('“', '"').replace('\u00a0', ' ')
-    url = "https://humanize-ai-tools.p.rapidapi.com/humanize"
-    headers = {"content-type": "application/json", "X-RapidAPI-Key": HUMANIZE_AI_TOOLS_API_KEY, "X-RapidAPI-Host": "humanize-ai-tools.p.rapidapi.com"}
-    payload = {"language": "english", "paragraph": sanitized_paragraph}
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=120)
-        response.raise_for_status()
-        data = response.json()
-        humanized_text = data.get("paragraph")
-        if not humanized_text:
-            raise CustomApiError(debug_info="Humanize AI Tools API returned an empty result.")
-        return humanized_text, True
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 400:
-            logger.warning(f"HAT API rejected a paragraph with a 400 error. Returning original paragraph. Response: {e.response.text}")
-            return paragraph, False
-        raise CustomApiError(debug_info=f"API Error: {e.response.status_code} - {e.response.text}") from e
-    except requests.exceptions.RequestException as e:
-        raise CustomApiError(debug_info=f"Request failed: {e}") from e
+import os
+import time
+import logging
+import requests
+
+logger = logging.getLogger(__name__)
+
+# --- API Keys ---
+HUMANIZE_AI_PRO_API_KEY = os.getenv("HUMANIZE_AI_PRO_API_KEY")
+
+# --- Config ---
+HUMANIZE_AI_PRO_URL = "https://api.humanizeai.pro/v1/"
+
+def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 2) -> str:
+    """
+    Submit text to Humanize AI Pro and poll until humanized text is returned.
+
+    Args:
+        text (str): Input text (must be at least 30 words).
+        max_retries (int): How many times to poll before giving up.
+        poll_interval (int): Seconds to wait between polls.
+
+    Returns:
+        str: The humanized text.
+
+    Raises:
+        Exception: If the task fails or times out.
+    """
+    if not HUMANIZE_AI_PRO_API_KEY:
+        raise ValueError("HUMANIZE_AI_PRO_API_KEY not set in environment")
+
+    headers = {
+        "x-api-key": HUMANIZE_AI_PRO_API_KEY,
+        "Content-Type": "application/json",
+    }
+
+    # 1. Submit task
+    submit_res = requests.post(HUMANIZE_AI_PRO_URL, json={"text": text}, headers=headers)
+    if submit_res.status_code != 200:
+        raise Exception(f"Failed to submit task: {submit_res.text}")
+
+    submit_data = submit_res.json()
+    task_id = submit_data.get("id")
+    if not task_id:
+        raise Exception(f"No task ID returned: {submit_data}")
+
+    logger.info(f"Submitted Humanize AI Pro task: {task_id}")
+
+    # 2. Poll until done
+    for attempt in range(max_retries):
+        poll_res = requests.get(HUMANIZE_AI_PRO_URL, params={"id": task_id}, headers=headers)
+        if poll_res.status_code != 200:
+            raise Exception(f"Polling failed: {poll_res.text}")
+
+        poll_data = poll_res.json()
+        status = poll_data.get("status")
+
+        if status == "processing":
+            logger.info(f"Task {task_id} still processing... ({attempt+1}/{max_retries})")
+            time.sleep(poll_interval)
+            continue
+        elif status == "success":
+            return poll_data.get("humanized_text") or poll_data
+        else:
+            raise Exception(f"Task failed: {poll_data}")
+
+    raise TimeoutError(f"Task {task_id} did not finish after {max_retries} retries")
 
 def call_single_openai_model(user_prompt: str, model: str) -> str:
     # This function remains unchanged
