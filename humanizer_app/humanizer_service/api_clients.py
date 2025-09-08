@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 # --- API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-HUMANIZE_AI_TOOLS_API_KEY = os.getenv("HUMANIZE_AI_TOOLS_API_KEY")
+HUMANIZE_AI_PRO_API_KEY = os.getenv("HUMANIZE_AI_PRO_API_KEY")
+
+# --- Config ---
+HUMANIZE_AI_PRO_URL = "https://api.humanizeai.pro/v1/"
 
 # --- Client Initialization ---
 openai_client = None
@@ -68,19 +71,6 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
         message="We're sorry, but a key component of our service is currently unavailable. Please try again later.",
         debug_info="All OpenAI models failed to generate a response."
     )
-
-import os
-import time
-import logging
-import requests
-
-logger = logging.getLogger(__name__)
-
-# --- API Keys ---
-HUMANIZE_AI_PRO_API_KEY = os.getenv("HUMANIZE_AI_PRO_API_KEY")
-
-# --- Config ---
-HUMANIZE_AI_PRO_URL = "https://api.humanizeai.pro/v1/"
 
 def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 2) -> str:
     """
