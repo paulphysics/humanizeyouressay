@@ -146,3 +146,11 @@ def call_single_openai_model(user_prompt: str, model: str) -> str:
     except OpenAIError as e:
         logger.error(f"OpenAI API call failed for model {model}: {e}")
         raise AllModelsFailedError(debug_info=str(e))
+
+# --- Legacy Wrapper for Backwards Compatibility ---
+def call_humanize_ai_tools_api(text: str, **kwargs):
+    """
+    Legacy alias: use call_humanize_ai_pro internally.
+    Prevents ImportError in workflows.py and routes old calls.
+    """
+    return call_humanize_ai_pro(text, **kwargs)
