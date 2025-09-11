@@ -3,6 +3,7 @@ import os
 import logging
 import requests
 import json
+import time
 from openai import OpenAI, OpenAIError
 
 # --- Local Imports ---
@@ -75,28 +76,32 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
 def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 2) -> str:
     """
     Submit text to Humanize AI Pro and poll until humanized text is returned.
-
-    Args:
-        text (str): Input text (must be at least 30 words).
-        max_retries (int): How many times to poll before giving up.
-        poll_interval (int): Seconds to wait between polls.
-
-    Returns:
-        str: The humanized text.
-
-    Raises:
-        Exception: If the task fails or times out.
     """
+
     if not HUMANIZE_AI_PRO_API_KEY:
         raise ValueError("HUMANIZE_AI_PRO_API_KEY not set in environment")
 
     headers = {
         "x-api-key": HUMANIZE_AI_PRO_API_KEY,
         "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": "https://www.humanizeyouressay.online",
+        "Referer": "https://www.humanizeyouressay.online/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
     }
 
-    # 1. Submit task
+    # --- 1. Submit task ---
+    logger.info("Submitting Humanize AI Pro task...")
     submit_res = requests.post(HUMANIZE_AI_PRO_URL, json={"text": text}, headers=headers)
+
+    logger.debug(f"Submit response status: {submit_res.status_code}")
+    logger.debug(f"Submit response headers: {submit_res.headers}")
+    logger.debug(f"Submit response body: {submit_res.text[:500]}")  # log first 500 chars
+
     if submit_res.status_code != 200:
         raise Exception(f"Failed to submit task: {submit_res.text}")
 
@@ -107,9 +112,15 @@ def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 
 
     logger.info(f"Submitted Humanize AI Pro task: {task_id}")
 
-    # 2. Poll until done
+    # --- 2. Poll until done ---
     for attempt in range(max_retries):
+        logger.info(f"Polling task {task_id} (attempt {attempt+1}/{max_retries})...")
         poll_res = requests.get(HUMANIZE_AI_PRO_URL, params={"id": task_id}, headers=headers)
+
+        logger.debug(f"Poll response status: {poll_res.status_code}")
+        logger.debug(f"Poll response headers: {poll_res.headers}")
+        logger.debug(f"Poll response body: {poll_res.text[:500]}")
+
         if poll_res.status_code != 200:
             raise Exception(f"Polling failed: {poll_res.text}")
 
@@ -117,10 +128,11 @@ def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 
         status = poll_data.get("status")
 
         if status == "processing":
-            logger.info(f"Task {task_id} still processing... ({attempt+1}/{max_retries})")
+            logger.info(f"Task {task_id} still processing...")
             time.sleep(poll_interval)
             continue
         elif status == "success":
+            logger.info(f"Task {task_id} completed successfully.")
             return poll_data.get("humanized_text") or poll_data
         else:
             raise Exception(f"Task failed: {poll_data}")
