@@ -11,15 +11,22 @@ from .exceptions import AllModelsFailedError, CustomApiError
 from .utils import count_words
 
 # --- Configuration ---
+# It's best practice to configure logging at the application's entry point.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- API Keys ---
+# --- API Keys & App-Specific Config ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 HUMANIZE_AI_PRO_API_KEY = os.getenv("HUMANIZE_AI_PRO_API_KEY")
+# Use an environment variable for your app's domain for flexibility.
+# This allows you to use different domains for development, staging, and production.
+APP_ORIGIN = os.getenv("APP_ORIGIN", "https://www.humanizeyouressay.online")
 
-# --- Config ---
+# --- Constants ---
 HUMANIZE_AI_PRO_URL = "https://api.humanizeai.pro/v1/"
+HUMANIZE_AI_POLL_INTERVAL = 2  # seconds
+HUMANIZE_AI_MAX_RETRIES = 30
+REQUEST_TIMEOUT = 120.0
 
 # --- Client Initialization ---
 openai_client = None
@@ -30,36 +37,53 @@ if OPENAI_API_KEY:
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}", exc_info=True)
 else:
-    logger.warning("OPENAI_API_KEY not set. Advanced features will be disabled.")
+    logger.warning("OPENAI_API_KEY not set. OpenAI features will be disabled.")
+
+# Create a persistent session for Humanize AI Pro API calls
+humanize_session = requests.Session()
+if HUMANIZE_AI_PRO_API_KEY:
+    humanize_session.headers.update({
+        "x-api-key": HUMANIZE_AI_PRO_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        # These headers are for the API's security, tying your key to your domain.
+        "Origin": APP_ORIGIN,
+        "Referer": f"{APP_ORIGIN}/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+    })
 
 def _call_openai_api(instructions: str, user_input: str, model: str, **kwargs) -> tuple[str, bool]:
     if not openai_client:
         raise ValueError("OpenAI client is not initialized.")
-    
-    logger.info(f"Sending request to OpenAI Responses API with model: {model}.")
-    
-    # **FIX:** Removed 'presence_penalty' and 'frequency_penalty' as they are not supported.
-    valid_params = {
-        "model": model,
-        "instructions": instructions,
-        "input": user_input,
-        "temperature": kwargs.get("temperature", 0.7),
-        "top_p": kwargs.get("top_p", 1.0),
-        "timeout": 120.0
-    }
+
+    logger.info(f"Sending request to OpenAI Chat Completions API with model: {model}.")
 
     try:
-        response = openai_client.responses.create(**valid_params)
+        response = openai_client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=kwargs.get("temperature", 0.7),
+            top_p=kwargs.get("top_p", 1.0),
+            timeout=REQUEST_TIMEOUT
+        )
         
-        if response.output_text:
-            logger.info("OpenAI Responses API call successful.")
-            return response.output_text, True
+        output_text = response.choices[0].message.content
+        if output_text:
+            logger.info("OpenAI API call successful.")
+            return output_text, True
         return "", False
     except OpenAIError as e:
-        logger.error(f"OpenAI Responses API call failed for model {model}: {e}")
+        logger.error(f"OpenAI API call failed for model {model}: {e}")
         return "", False
-    except TypeError as e:
-        logger.error(f"TypeError during OpenAI API call. Likely an unsupported parameter. Error: {e}")
+    except (TypeError, KeyError) as e:
+        logger.error(f"Error during OpenAI API call, likely bad params or response format. Error: {e}")
         return "", False
 
 def call_api_with_fallback(model_list: list, system_message: str, user_prompt: str, **kwargs) -> str:
@@ -70,99 +94,57 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
             
     raise AllModelsFailedError(
         message="We're sorry, but a key component of our service is currently unavailable. Please try again later.",
-        debug_info="All OpenAI models failed to generate a response."
+        debug_info="All configured OpenAI models failed to generate a response."
     )
 
-def call_humanize_ai_pro(text: str, max_retries: int = 30, poll_interval: int = 2) -> str:
+def call_humanize_ai_pro(text: str) -> str:
     """
-    Submit text to Humanize AI Pro and poll until humanized text is returned.
+    Submits text to Humanize AI Pro and polls until the humanized text is returned.
     """
-
     if not HUMANIZE_AI_PRO_API_KEY:
         raise ValueError("HUMANIZE_AI_PRO_API_KEY not set in environment")
 
-    headers = {
-        "x-api-key": HUMANIZE_AI_PRO_API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Origin": "https://www.humanizeyouressay.online",
-        "Referer": "https://www.humanizeyouressay.online/",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-    }
-
     # --- 1. Submit task ---
     logger.info("Submitting Humanize AI Pro task...")
-    submit_res = requests.post(HUMANIZE_AI_PRO_URL, json={"text": text}, headers=headers)
-
-    logger.debug(f"Submit response status: {submit_res.status_code}")
-    logger.debug(f"Submit response headers: {submit_res.headers}")
-    logger.debug(f"Submit response body: {submit_res.text[:500]}")  # log first 500 chars
-
-    if submit_res.status_code != 200:
-        raise Exception(f"Failed to submit task: {submit_res.text}")
+    try:
+        submit_res = humanize_session.post(HUMANIZE_AI_PRO_URL, json={"text": text}, timeout=REQUEST_TIMEOUT)
+        submit_res.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+    except requests.RequestException as e:
+        raise CustomApiError(f"Failed to submit task to Humanize AI Pro: {e}")
 
     submit_data = submit_res.json()
     task_id = submit_data.get("id")
     if not task_id:
-        raise Exception(f"No task ID returned: {submit_data}")
+        raise CustomApiError("No task ID returned from Humanize AI Pro.", debug_info=str(submit_data))
 
     logger.info(f"Submitted Humanize AI Pro task: {task_id}")
 
     # --- 2. Poll until done ---
-    for attempt in range(max_retries):
-        logger.info(f"Polling task {task_id} (attempt {attempt+1}/{max_retries})...")
-        poll_res = requests.get(HUMANIZE_AI_PRO_URL, params={"id": task_id}, headers=headers)
-
-        logger.debug(f"Poll response status: {poll_res.status_code}")
-        logger.debug(f"Poll response headers: {poll_res.headers}")
-        logger.debug(f"Poll response body: {poll_res.text[:500]}")
-
-        if poll_res.status_code != 200:
-            raise Exception(f"Polling failed: {poll_res.text}")
+    for attempt in range(HUMANIZE_AI_MAX_RETRIES):
+        logger.info(f"Polling task {task_id} (attempt {attempt+1}/{HUMANIZE_AI_MAX_RETRIES})...")
+        try:
+            poll_res = humanize_session.get(HUMANIZE_AI_PRO_URL, params={"id": task_id}, timeout=REQUEST_TIMEOUT)
+            poll_res.raise_for_status()
+        except requests.RequestException as e:
+            raise CustomApiError(f"Polling failed for task {task_id}: {e}")
 
         poll_data = poll_res.json()
         status = poll_data.get("status")
 
         if status == "processing":
-            logger.info(f"Task {task_id} still processing...")
-            time.sleep(poll_interval)
+            time.sleep(HUMANIZE_AI_POLL_INTERVAL)
             continue
         elif status == "success":
             logger.info(f"Task {task_id} completed successfully.")
-            return poll_data.get("humanized_text") or poll_data
+            humanized_text = poll_data.get("humanized_text")
+            if humanized_text is not None:
+                return humanized_text
+            raise CustomApiError("Task succeeded but API response was missing 'humanized_text'.", debug_info=str(poll_data))
         else:
-            raise Exception(f"Task failed: {poll_data}")
+            raise CustomApiError(f"Task {task_id} failed with status '{status}'.", debug_info=str(poll_data))
 
-    raise TimeoutError(f"Task {task_id} did not finish after {max_retries} retries")
-
-def call_single_openai_model(user_prompt: str, model: str) -> str:
-    # This function remains unchanged
-    if not openai_client:
-        raise ValueError("OpenAI client is not initialized.")
-    
-    try:
-        response = openai_client.responses.create(
-            model=model,
-            instructions="You are a helpful and creative assistant.",
-            input=user_prompt,
-            temperature=0.7,
-            timeout=120.0
-        )
-        if response.output_text:
-            return response.output_text
-        raise AllModelsFailedError(debug_info=f"No response from model {model}.")
-    except OpenAIError as e:
-        logger.error(f"OpenAI API call failed for model {model}: {e}")
-        raise AllModelsFailedError(debug_info=str(e))
+    raise TimeoutError(f"Task {task_id} did not complete after {HUMANIZE_AI_MAX_RETRIES * HUMANIZE_AI_POLL_INTERVAL} seconds.")
 
 # --- Legacy Wrapper for Backwards Compatibility ---
 def call_humanize_ai_tools_api(text: str, **kwargs):
-    """
-    Legacy alias: use call_humanize_ai_pro internally.
-    Prevents ImportError in workflows.py and routes old calls.
-    """
-    return call_humanize_ai_pro(text, **kwargs)
+    return call_humanize_ai_pro(text)
