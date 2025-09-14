@@ -11,15 +11,12 @@ from .exceptions import AllModelsFailedError, CustomApiError
 from .utils import count_words
 
 # --- Configuration ---
-# It's best practice to configure logging at the application's entry point.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- API Keys & App-Specific Config ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 HUMANIZE_AI_PRO_API_KEY = os.getenv("HUMANIZE_AI_PRO_API_KEY")
-# Use an environment variable for your app's domain for flexibility.
-# This allows you to use different domains for development, staging, and production.
 APP_ORIGIN = os.getenv("APP_ORIGIN", "https://www.humanizeyouressay.online")
 
 # --- Constants ---
@@ -39,14 +36,12 @@ if OPENAI_API_KEY:
 else:
     logger.warning("OPENAI_API_KEY not set. OpenAI features will be disabled.")
 
-# Create a persistent session for Humanize AI Pro API calls
 humanize_session = requests.Session()
 if HUMANIZE_AI_PRO_API_KEY:
     humanize_session.headers.update({
         "x-api-key": HUMANIZE_AI_PRO_API_KEY,
         "Content-Type": "application/json",
         "Accept": "application/json",
-        # These headers are for the API's security, tying your key to your domain.
         "Origin": APP_ORIGIN,
         "Referer": f"{APP_ORIGIN}/",
         "User-Agent": (
@@ -98,17 +93,13 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
     )
 
 def call_humanize_ai_pro(text: str) -> str:
-    """
-    Submits text to Humanize AI Pro and polls until the humanized text is returned.
-    """
     if not HUMANIZE_AI_PRO_API_KEY:
         raise ValueError("HUMANIZE_AI_PRO_API_KEY not set in environment")
 
-    # --- 1. Submit task ---
     logger.info("Submitting Humanize AI Pro task...")
     try:
         submit_res = humanize_session.post(HUMANIZE_AI_PRO_URL, json={"text": text}, timeout=REQUEST_TIMEOUT)
-        submit_res.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+        submit_res.raise_for_status()
     except requests.RequestException as e:
         raise CustomApiError(f"Failed to submit task to Humanize AI Pro: {e}")
 
@@ -119,7 +110,6 @@ def call_humanize_ai_pro(text: str) -> str:
 
     logger.info(f"Submitted Humanize AI Pro task: {task_id}")
 
-    # --- 2. Poll until done ---
     for attempt in range(HUMANIZE_AI_MAX_RETRIES):
         logger.info(f"Polling task {task_id} (attempt {attempt+1}/{HUMANIZE_AI_MAX_RETRIES})...")
         try:
@@ -145,6 +135,23 @@ def call_humanize_ai_pro(text: str) -> str:
 
     raise TimeoutError(f"Task {task_id} did not complete after {HUMANIZE_AI_MAX_RETRIES * HUMANIZE_AI_POLL_INTERVAL} seconds.")
 
-# --- Legacy Wrapper for Backwards Compatibility ---
+# --- Backwards Compatibility Wrappers ---
+
+def call_single_openai_model(user_prompt: str, model: str) -> str:
+    """
+    Provides backwards compatibility for callers expecting this function.
+    It acts as a simple wrapper around the more robust call_api_with_fallback.
+    """
+    logger.info(f"Using compatibility wrapper 'call_single_openai_model' for model: {model}")
+    # Translate the old function call to the new one
+    return call_api_with_fallback(
+        model_list=[model],
+        system_message="You are a helpful and creative assistant.", # A sensible default
+        user_prompt=user_prompt
+    )
+
 def call_humanize_ai_tools_api(text: str, **kwargs):
+    """
+    Legacy alias for call_humanize_ai_pro.
+    """
     return call_humanize_ai_pro(text)
