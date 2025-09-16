@@ -70,29 +70,54 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
     )
 
 def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
-    # This function remains unchanged
+    """
+    IMPORTANT! Wrapper for the AI Text Humanizer Multilingual Undetectable API.
+    Kept the same function name so existing code does not break.
+    Returns (humanized_text, success).
+    """
     if not paragraph or not paragraph.strip():
         return paragraph, True
-    sanitized_paragraph = paragraph.replace('’', "'").replace('‘', "'").replace('”', '"').replace('“', '"').replace('\u00a0', ' ')
-    url = "https://humanize-ai-tools.p.rapidapi.com/humanize"
-    headers = {"content-type": "application/json", "X-RapidAPI-Key": HUMANIZE_AI_TOOLS_API_KEY, "X-RapidAPI-Host": "humanize-ai-tools.p.rapidapi.com"}
-    payload = {"language": "english", "paragraph": sanitized_paragraph}
-    
+
+    sanitized_paragraph = (
+        paragraph.replace('’', "'")
+                 .replace('‘', "'")
+                 .replace('”', '"')
+                 .replace('“', '"')
+                 .replace('\u00a0', ' ')
+    )
+
+    url = "https://ai-text-humanizer-multilingual-undetectable.p.rapidapi.com/humanize"
+    headers = {
+        "Content-Type": "application/json",
+        "x-rapidapi-key": os.getenv("AI_TEXT_HUMANIZER_API_KEY"),
+        "x-rapidapi-host": "ai-text-humanizer-multilingual-undetectable.p.rapidapi.com"
+    }
+    payload = {"text": sanitized_paragraph}
+
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=120)
         response.raise_for_status()
         data = response.json()
-        humanized_text = data.get("paragraph")
+
+        # Adjust based on actual response shape
+        humanized_text = data.get("humanized_text") or data.get("text") or data.get("humanize")
+
         if not humanized_text:
-            raise CustomApiError(debug_info="Humanize AI Tools API returned an empty result.")
+            raise CustomApiError(debug_info="AI Text Humanizer API returned an empty result.")
+
         return humanized_text, True
+
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 400:
-            logger.warning(f"HAT API rejected a paragraph with a 400 error. Returning original paragraph. Response: {e.response.text}")
+            logger.warning(
+                f"AI Text Humanizer API rejected paragraph with 400 error. "
+                f"Returning original paragraph. Response: {e.response.text}"
+            )
             return paragraph, False
         raise CustomApiError(debug_info=f"API Error: {e.response.status_code} - {e.response.text}") from e
     except requests.exceptions.RequestException as e:
         raise CustomApiError(debug_info=f"Request failed: {e}") from e
+
 
 def call_single_openai_model(user_prompt: str, model: str) -> str:
     # This function remains unchanged
