@@ -100,8 +100,8 @@ def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
         response.raise_for_status()
         data = response.json()
 
-        # ✅ Correct key for this API
-        humanized_text = data.get("humanized_text")
+        # ✅ Correct field from the API
+        humanized_text = data.get("humanizedText")
 
         if not humanized_text:
             logger.error(f"AI Text Humanizer API unexpected response: {data}")
