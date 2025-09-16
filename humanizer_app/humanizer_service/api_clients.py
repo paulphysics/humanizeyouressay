@@ -69,11 +69,13 @@ def call_api_with_fallback(model_list: list, system_message: str, user_prompt: s
         debug_info="All OpenAI models failed to generate a response."
     )
 
+
 def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
     """
     IMPORTANT! Wrapper for the AI Text Humanizer Multilingual Undetectable API.
     Kept the same function name so existing code does not break.
     """
+
     if not paragraph or not paragraph.strip():
         return paragraph, True
 
@@ -88,7 +90,7 @@ def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
     url = "https://ai-text-humanizer-multilingual-undetectable.p.rapidapi.com/humanize"
     headers = {
         "Content-Type": "application/json",
-        "x-rapidapi-key": HUMANIZE_AI_TOOLS_API_KEY,
+        "x-rapidapi-key": os.getenv("AI_TEXT_HUMANIZER_API_KEY"),
         "x-rapidapi-host": "ai-text-humanizer-multilingual-undetectable.p.rapidapi.com",
     }
     payload = {"text": sanitized_paragraph}
@@ -98,21 +100,24 @@ def call_humanize_ai_tools_api(paragraph: str) -> tuple[str, bool]:
         response.raise_for_status()
         data = response.json()
 
-        # Adjusted key to match new API
+        # ✅ Correct key for this API
         humanized_text = data.get("humanized_text")
+
         if not humanized_text:
+            logger.error(f"AI Text Humanizer API unexpected response: {data}")
             raise CustomApiError(debug_info="AI Text Humanizer API returned an empty result.")
 
-        # ✅ Keep the same return signature as before
         return humanized_text, True
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 400:
             logger.warning(
-                f"Humanizer API rejected a paragraph with 400. Returning original. Response: {e.response.text}"
+                f"AI Text Humanizer API rejected paragraph with 400. Returning original. Response: {e.response.text}"
             )
             return paragraph, False
-        raise CustomApiError(debug_info=f"API Error: {e.response.status_code} - {e.response.text}") from e
+        raise CustomApiError(
+            debug_info=f"API Error: {e.response.status_code} - {e.response.text}"
+        ) from e
     except requests.exceptions.RequestException as e:
         raise CustomApiError(debug_info=f"Request failed: {e}") from e
 
