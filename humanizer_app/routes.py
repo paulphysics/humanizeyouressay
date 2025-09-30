@@ -69,7 +69,7 @@ def redirect_admins_from_user_routes():
 KENYAN_PHONE_REGEX = re.compile(r"^(0|\+254)7[0-9]{8}$")
 logger = logging.getLogger(__name__)
 
-WHATSAPP_NUMBER = "254712345678"
+WHATSAPP_NUMBER = "254743638911"
 MAX_WORDS = 1925
 NAIROBI_TZ = pytz.timezone('Africa/Nairobi')
 
