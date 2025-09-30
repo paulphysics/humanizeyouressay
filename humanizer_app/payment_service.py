@@ -20,9 +20,9 @@ PAY_HERO_CALLBACK_URL = os.getenv("PAY_HERO_CALLBACK_URL")
 
 # --- CORRECTED PRICING CONSTANTS ---
 WORDS_PER_UNIT = 275
-PRICE_PER_UNIT = 29.0                # KSh for Standard Humanization
+PRICE_PER_UNIT = 19.0                # KSh for Standard Humanization
 ESSAY_PRICE_PER_UNIT = 29.0          # KSh for Essay Humanization (now same as standard)
-FORMAT_ONLY_PRICE_PER_UNIT = 19.0    # KSh for Formatting Only
+FORMAT_ONLY_PRICE_PER_UNIT = 9.0    # KSh for Formatting Only
 # ------------------------------------
 
 # --- Environment Variable Validation ---
