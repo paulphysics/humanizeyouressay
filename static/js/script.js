@@ -191,7 +191,7 @@
         walletIcon.classList.toggle("text-green-600", isHidden);
         walletBalanceAmount.classList.toggle("text-green-600", !isHidden);
         walletBalanceAmount.classList.toggle("text-gray-500", isHidden);
-        walletBalanceAmount.textContent = isHidden ? "KSh ***" : `KSh ${walletBalanceAmount.dataset.balance}`;
+        walletBalanceAmount.textContent = isHidden ? "*** Credit(s)" : `${walletBalanceAmount.dataset.balance} Credit(s)`;
       }
 
       function toggleMobileMenu() {
