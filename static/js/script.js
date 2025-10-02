@@ -1123,7 +1123,7 @@
         else currentPrice = PRICE_PER_UNIT;
         const cost = (words / WORDS_PER_UNIT) * currentPrice;
         if (DOM.wordCountDisplay) DOM.wordCountDisplay.textContent = words;
-        if (DOM.estimatedCostDisplay) DOM.estimatedCostDisplay.textContent = `KSh ${cost.toFixed(2)}`;
+        if (DOM.estimatedCostDisplay) DOM.estimatedCostDisplay.textContent = `${cost.toFixed(2)} Credit(s)`;
       },
       updateFormattingOptions: () => {
         const selectedMode = qs('input[name="humanizer_mode"]:checked');
