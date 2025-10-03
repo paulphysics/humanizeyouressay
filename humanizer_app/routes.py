@@ -574,7 +574,7 @@ def submit_humanize_task():
         return _handle_logged_in_humanization()
     else:
         # send anonymous users to sign-in/up
-        return redirect(url_for('auth.login'))  # adjust 'auth.login' to your actual login route
+        return redirect(url_for('auth.auth_page'))  # adjust 'auth.login' to your actual login route
 
 def _handle_logged_in_humanization():
     user = User.query.get_or_404(session['user']['uid'])
