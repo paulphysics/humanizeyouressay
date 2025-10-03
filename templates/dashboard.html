@@ -1,56 +1,5 @@
-{% extends "layout.html" %}
-
-{% block title %}Your Dashboard{% endblock %}
-
-{% block extra_head %}
+{# Add this near the top of your template, after extending base #}
 <script>
-    window.FLASK_IS_ADMIN = {{ is_admin | tojson }};
-    window.FLASK_WORDS_PER_UNIT = {{ WORDS_PER_UNIT | tojson }};
-    window.FLASK_PRICE_PER_UNIT = {{ PRICE_PER_UNIT | tojson }};
-    window.FLASK_ESSAY_PRICE_PER_UNIT = {{ ESSAY_PRICE_PER_UNIT | tojson }};
-    window.firebaseConfig = {{ firebase_config | tojson }};
+    window.isLoggedIn = {{ is_logged_in|tojson }};
+    window.signInUrl = {{ sign_in_url|tojson }};
 </script>
-{% endblock %}
-
-{% block content %}
-<div id="js-alert-container" class="flash-message rounded-lg shadow-md hidden">
-    <span id="js-alert-message"></span>
-</div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <div class="max-w-7xl mx-auto w-full mb-4">
-      {% for category, message in messages %}
-        <div class="flash-message flash-{{ category }}">{{ message }}</div>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
-
-<div class="max-w-7xl mx-auto card p-8 w-full">
-    <h1 class="text-2xl font-bold text-center text-gray-500 mb-6">✨Humanize AI Text</h1>
-    <p class="text-sm text-center text-gray-600 mb-8">
-        Bypass advanced AI detection tools with text that sounds completely natural. Transparent and affordable pricing from just KSh {{ PRICE_PER_UNIT }} per {{ WORDS_PER_UNIT }} words. 
-        Join our<a href="https://chat.whatsapp.com/B9wlppX9qrQLLufICTKD7z?mode=ems_share_t" class="text-indigo-600 hover:text-indigo-600"> WhatsApp community here</a>.
-    </p>
-    
-    {% include '_humanizer_form.html' %}
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script type="module" src="{{ url_for('static', filename='js/login-auth.js') }}"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const textToPaste = localStorage.getItem('textToHumanize');
-    if (textToPaste) {
-        const humanizerTextarea = document.getElementById('input_text'); 
-        if (humanizerTextarea) {
-            humanizerTextarea.value = textToPaste;
-            humanizerTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        localStorage.removeItem('textToHumanize');
-    }
-});
-</script>
-{% endblock %}
