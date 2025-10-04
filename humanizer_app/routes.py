@@ -121,25 +121,14 @@ def index():
         user = User.query.get(session['user']['uid'])
         if not user:
             session.clear()
-            return redirect(url_for('main.index'))
+            return redirect(url_for('auth.auth_page'))
         
         if user.is_admin:
             return redirect(url_for('admin_dashboard.dashboard'))
         
         return redirect(url_for('main.playground'))
     else:
-        firebase_config = {
-            "apiKey": os.getenv("FIREBASE_API_KEY"), "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-            "projectId": os.getenv("FIREBASE_PROJECT_ID"), "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-            "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"), "appId": os.getenv("FIREBASE_APP_ID"),
-            "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
-        }
-        return render_template("home.html",
-                               username=None,
-                               WORDS_PER_UNIT=WORDS_PER_UNIT,
-                               PRICE_PER_UNIT=PRICE_PER_UNIT + 10,
-                               ESSAY_PRICE_PER_UNIT=ESSAY_PRICE_PER_UNIT + 10,
-                               firebase_config=firebase_config)
+        return redirect(url_for('auth.auth_page'))
 
 @main_bp.app_errorhandler(413)
 @main_bp.app_errorhandler(RequestEntityTooLarge)
