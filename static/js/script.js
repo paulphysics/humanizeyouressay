@@ -1286,7 +1286,7 @@
 
                 // ✅ FIX: Provide specific success feedback after the server confirms.
                 if (AppState.isLoggedIn) {
-                     UI.showAlert("Task submitted successfully! Your text is being humanized.", "success");
+                     UI.showAlert("Task submitted successfully! Your text is being processed.", "success");
                 } else {
                      UI.showAlert("STK push sent! Please complete payment on your phone.", "success");
                 }
