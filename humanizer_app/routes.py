@@ -121,7 +121,7 @@ def index():
         user = User.query.get(session['user']['uid'])
         if not user:
             session.clear()
-            return redirect(url_for('main.index'))
+            return redirect(url_for('auth.auth_page'))
         
         if user.is_admin:
             return redirect(url_for('admin_dashboard.dashboard'))
