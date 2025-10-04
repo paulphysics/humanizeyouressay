@@ -154,7 +154,7 @@ def auth_page():
     """
     # Check if user is already authenticated
     if 'user' in session:
-        return redirect(url_for('main.home'))
+        return redirect(url_for('main.index'))
 
     # Retrieve Firebase config from environment variables
     firebase_config = {
