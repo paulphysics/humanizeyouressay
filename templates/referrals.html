@@ -43,7 +43,7 @@
                     Lifetime Earnings 💰
                 </h3>
                 <p class="text-4xl font-bold text-blue-600">
-                    KSh {{ "%.2f"|format(lifetime_earnings) }}
+                    {{ "%.2f"|format(lifetime_earnings) }}
                 </p>
             </div>
 
@@ -54,7 +54,7 @@
                     Current Earnings 💸
                 </h3>
                 <p class="text-4xl font-bold text-green-600">
-                    KSh {{ "%.2f"|format(withdrawable_balance) }}
+                    {{ "%.2f"|format(withdrawable_balance) }}
                 </p>
 
                 {% if withdrawable_balance|float >= 1 %}
@@ -79,7 +79,7 @@
                     Wallet Balance 💳
                 </h3>
                 <p class="text-4xl font-bold text-indigo-600">
-                    KSh {{ "%.2f"|format(wallet_balance) }}
+                    {{ "%.2f"|format(wallet_balance) }}
                 </p>
             </div>
         </div>
