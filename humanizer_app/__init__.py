@@ -40,8 +40,7 @@ def create_app():
 
     # --- Model configuration ---
     """
-    # Will add this back in later once I sort out payment issues with the provider
-   
+    # Gemini 2.5 Pro has issues: I should sort out payment issues with the provider to get stable service.
     """
     MODELS = {
         "gpt-5": {
@@ -53,15 +52,16 @@ def create_app():
             "api_id": "gpt-4o-2024-08-06",
             "price_per_word": 0.0085,
             "label": "ChatGPT 4o"
-        }
-         "gemini-2.5-pro": {
+        },
+        "gemini-2.5-pro": {
             # --- FINAL CORRECTED API ID ---
             "api_id": "gemini-2.5-pro",
             # ------------------------------
             "price_per_word": 0.015,
-            "label": "Gemini 2.5 Pro",
+            "label": "Gemini 2.5 Pro"
         }
     }
+
     DEFAULT_MODEL_KEY = "gpt-5"
     app.config["MODELS"] = MODELS
     app.config["DEFAULT_MODEL_KEY"] = DEFAULT_MODEL_KEY
@@ -89,7 +89,7 @@ def create_app():
     redis_url = os.getenv("REDIS_URL")
     if redis_url and redis_url.startswith("rediss://"):
         redis_url += "?ssl_cert_reqs=CERT_NONE"
-    
+
     app.config.from_mapping(
         CELERY=dict(
             broker_url=redis_url,
@@ -126,10 +126,11 @@ def create_app():
     from .routes import main_bp
     from .auth_routes import auth_bp
     from .admin_dashboard_routes import admin_dashboard_bp
-    from .paypal_routes import paypal_bp  # ✅ NEW LINE
+    from .paypal_routes import paypal_bp  # ✅ PayPal integration
+
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_dashboard_bp)
-    app.register_blueprint(paypal_bp)  # ✅ NEW LINE
+    app.register_blueprint(paypal_bp)      # ✅ PayPal integration
 
     return app
