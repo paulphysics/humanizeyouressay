@@ -74,28 +74,30 @@
 <div id="paymentMethodModal" class="modal hidden">
   <div class="modal-content">
     <span id="closePaymentMethodModalBtn" class="close-button">×</span>
-    <h2 class="text-xl font-bold text-center text-gray-800 mb-4">Choose Payment Method</h2>
+    <h2 class="text-xl font-bold text-center text-gray-800 mb-4">
+      Choose Payment Method
+    </h2>
     <p class="text-center text-gray-600 mb-6 text-sm">
       Select how you’d like to top up your wallet.
     </p>
 
     <div class="space-y-4">
-      <!-- ✅ M-Pesa Button (white background, green border) -->
+      <!-- ✅ M-Pesa Button (white bg, green border, h-7 logo) -->
       <button id="chooseMpesaBtn"
               class="w-full bg-white border border-green-500 hover:bg-green-50 text-green-600 font-bold 
-                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm">
+                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm space-x-2">
         <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" 
-             alt="M-Pesa" class="h-5 inline-block mr-2">
-        Pay with M-Pesa
+             alt="M-Pesa" class="h-7 w-auto inline-block">
+        <span>Pay with M-Pesa</span>
       </button>
 
-      <!-- ✅ PayPal Button (hover darkens for consistency) -->
+      <!-- ✅ PayPal Button (h-7 logo, consistent hover) -->
       <button id="choosePaypalBtn"
               class="w-full bg-yellow-400 hover:bg-yellow-500 hover:brightness-95 text-gray-900 font-semibold 
-                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm">
+                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm space-x-2">
         <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" 
-             alt="PayPal" class="h-5 inline-block mr-2">
-        Pay with PayPal
+             alt="PayPal" class="h-7 w-auto inline-block">
+        <span>Pay with PayPal</span>
       </button>
     </div>
   </div>
@@ -110,27 +112,32 @@ document.addEventListener("DOMContentLoaded", function () {
   const mpesaBtn = document.getElementById("chooseMpesaBtn");
   const paypalBtn = document.getElementById("choosePaypalBtn");
 
-  // 🧩 Prevent M-Pesa modal auto popup
+  // --- Prevent both modals showing at once ---
+  function closeAllModals() {
+    document.querySelectorAll(".modal").forEach(m => m.classList.add("hidden"));
+  }
+
+  // 🧩 Lock M-Pesa modal initially
   topUpModal.classList.add("hidden");
 
-  // Manual Top Up click
+  // Manual "Top Up" click
   window.openPaymentSelector = function() {
-    topUpModal.classList.add("hidden");  // close any active M-Pesa modal
+    closeAllModals();
     paymentSelector.classList.remove("hidden");
   };
 
   // Close selector
   closeSelector.addEventListener("click", () => paymentSelector.classList.add("hidden"));
 
-  // ✅ M-Pesa option
+  // ✅ M-Pesa button — open top-up modal only
   mpesaBtn.addEventListener("click", () => {
-    paymentSelector.classList.add("hidden");
+    closeAllModals();
     topUpModal.classList.remove("hidden");
   });
 
-  // ✅ PayPal option
+  // ✅ PayPal button — redirect only
   paypalBtn.addEventListener("click", () => {
-    paymentSelector.classList.add("hidden");
+    closeAllModals();
     const amount = prompt("Enter the amount in USD to top up:");
     if (amount && parseFloat(amount) > 0) {
       window.location.href = `/paypal/create_payment?amount=${amount}`;
@@ -142,8 +149,18 @@ document.addEventListener("DOMContentLoaded", function () {
   // 🧠 Intercept auto top-up trigger (insufficient funds)
   const originalShowTopUp = window.showTopUpModal;
   window.showTopUpModal = function() {
-    topUpModal.classList.add("hidden");
+    closeAllModals();
     paymentSelector.classList.remove("hidden");
   };
+
+  // 🧩 Defensive observer — prevent both showing simultaneously if toggled by scripts
+  const observer = new MutationObserver(() => {
+    const topUpVisible = !topUpModal.classList.contains("hidden");
+    const selectorVisible = !paymentSelector.classList.contains("hidden");
+    if (topUpVisible && selectorVisible) {
+      topUpModal.classList.add("hidden"); // keep only selector visible
+    }
+  });
+  observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["class"] });
 });
 </script>
