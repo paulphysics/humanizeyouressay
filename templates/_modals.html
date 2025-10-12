@@ -80,15 +80,21 @@
     </p>
 
     <div class="space-y-4">
+      <!-- ✅ M-Pesa Button (white background, green border) -->
       <button id="chooseMpesaBtn"
-              class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
-        <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa" class="h-5 inline-block mr-2">
+              class="w-full bg-white border border-green-500 hover:bg-green-50 text-green-600 font-bold 
+                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm">
+        <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" 
+             alt="M-Pesa" class="h-5 inline-block mr-2">
         Pay with M-Pesa
       </button>
 
+      <!-- ✅ PayPal Button (hover darkens for consistency) -->
       <button id="choosePaypalBtn"
-              class="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
-        <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" alt="PayPal" class="h-5 inline-block mr-2">
+              class="w-full bg-yellow-400 hover:bg-yellow-500 hover:brightness-95 text-gray-900 font-semibold 
+                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out flex items-center justify-center shadow-sm">
+        <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" 
+             alt="PayPal" class="h-5 inline-block mr-2">
         Pay with PayPal
       </button>
     </div>
@@ -104,21 +110,25 @@ document.addEventListener("DOMContentLoaded", function () {
   const mpesaBtn = document.getElementById("chooseMpesaBtn");
   const paypalBtn = document.getElementById("choosePaypalBtn");
 
-  // Show selector (manual Top Up click)
+  // 🧩 Prevent M-Pesa modal auto popup
+  topUpModal.classList.add("hidden");
+
+  // Manual Top Up click
   window.openPaymentSelector = function() {
+    topUpModal.classList.add("hidden");  // close any active M-Pesa modal
     paymentSelector.classList.remove("hidden");
   };
 
   // Close selector
   closeSelector.addEventListener("click", () => paymentSelector.classList.add("hidden"));
 
-  // M-Pesa
+  // ✅ M-Pesa option
   mpesaBtn.addEventListener("click", () => {
     paymentSelector.classList.add("hidden");
     topUpModal.classList.remove("hidden");
   });
 
-  // PayPal
+  // ✅ PayPal option
   paypalBtn.addEventListener("click", () => {
     paymentSelector.classList.add("hidden");
     const amount = prompt("Enter the amount in USD to top up:");
@@ -129,9 +139,10 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // 🧠 Intercept auto top-up (insufficient funds)
+  // 🧠 Intercept auto top-up trigger (insufficient funds)
   const originalShowTopUp = window.showTopUpModal;
   window.showTopUpModal = function() {
+    topUpModal.classList.add("hidden");
     paymentSelector.classList.remove("hidden");
   };
 });
