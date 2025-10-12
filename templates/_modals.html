@@ -1,156 +1,138 @@
+<!-- 💸 PAYMENT CONFIRMATION MODAL (Humanize Payment via M-Pesa) -->
 <div id="paymentModal" class="modal hidden">
-    <div class="modal-content">
-        <span id="closeMpesaModalBtn" class="close-button">×</span>
-        <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">
-            <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa Logo" class="mx-auto h-20 mb-4">
-            Confirm Payment
-        </h2>
-        <p class="text-center text-gray-600 mb-4">You are about to humanize <span id="modal_word_count_display">0</span> words for KSh <span id="modal_estimated_cost_display">0</span>.</p>
-        <div class="space-y-4">
-            <div>
-                <label for="phone_number_modal" class="block text-lg font-medium text-gray-700 mb-2">Phone Number (M-Pesa):</label>
-                <input type="tel" id="phone_number_modal" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm" placeholder="e.g., 0712345678" required>
-            </div>
-        </div>
-        <button type="button" id="submitPaymentBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg mt-6 transition duration-300 ease-in-out">
-            Submit Payment
-        </button>
+  <div class="modal-content">
+    <span id="closeMpesaModalBtn" class="close-button">×</span>
+    <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">
+      <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa Logo" class="mx-auto h-20 mb-4">
+      Confirm Payment
+    </h2>
+    <p class="text-center text-gray-600 mb-4">
+      You are about to humanize <span id="modal_word_count_display">0</span> words
+      for KSh <span id="modal_estimated_cost_display">0</span>.
+    </p>
+
+    <div class="space-y-4">
+      <div>
+        <label for="phone_number_modal" class="block text-lg font-medium text-gray-700 mb-2">
+          Phone Number (M-Pesa):
+        </label>
+        <input type="tel" id="phone_number_modal"
+               class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+               placeholder="e.g., 0712345678" required>
+      </div>
     </div>
+
+    <button type="button" id="submitPaymentBtn"
+            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg mt-6 transition duration-300 ease-in-out">
+      Submit Payment
+    </button>
+  </div>
 </div>
 
+<!-- 💰 TOP UP MODAL (M-Pesa Only) -->
 <div id="topUpModal" class="modal hidden">
   <div class="modal-content">
     <span id="closeTopUpModalBtn" class="close-button">×</span>
     <h2 class="text-xl font-bold text-center text-gray-800 mb-4">
-      <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" 
+      <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}"
            alt="M-Pesa Logo" class="mx-auto h-20 mb-4">
       Top Up Your Wallet
     </h2>
 
     <p class="text-center text-gray-600 mb-3 text-sm">
-      You are about to top up your wallet via M-Pesa or PayPal.
+      You are about to top up your wallet via M-Pesa.
     </p>
 
     <div class="space-y-3">
       <div>
-        <label for="top_up_amount" 
-               class="block text-base font-medium text-gray-700 mb-1">Amount:</label>
-        <input type="number" id="top_up_amount" 
-               class="w-full p-3 border border-gray-300 rounded-lg 
-                      focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm" 
+        <label for="top_up_amount" class="block text-base font-medium text-gray-700 mb-1">
+          Amount:
+        </label>
+        <input type="number" id="top_up_amount"
+               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm"
                placeholder="e.g., 500" required>
       </div>
 
       <div>
-        <label for="phone_number_top_up" 
-               class="block text-base font-medium text-gray-700 mb-1">
+        <label for="phone_number_top_up" class="block text-base font-medium text-gray-700 mb-1">
           Phone Number (M-Pesa):
         </label>
-        <input type="tel" id="phone_number_top_up" 
-               class="w-full p-3 border border-gray-300 rounded-lg 
-                      focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm" 
+        <input type="tel" id="phone_number_top_up"
+               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-sm"
                placeholder="e.g., 0712345678" required>
       </div>
     </div>
 
-    <!-- Existing M-Pesa Button -->
-    <button type="button" id="submitTopUpBtn" 
-            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold 
-                   py-3 px-6 rounded-lg mt-4 text-sm transition duration-300 ease-in-out">
+    <button type="button" id="submitTopUpBtn"
+            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg mt-4 text-sm transition duration-300 ease-in-out">
       Top Up with M-Pesa
     </button>
-
-    <!-- ✅ PayPal Button -->
-    <div id="paypal-button-container" class="mt-4 text-center">
-      <button id="paypalTopUpBtn" 
-              class="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold 
-                     py-3 px-6 rounded-lg transition duration-300 ease-in-out flex 
-                     items-center justify-center">
-        <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" 
-             alt="PayPal" class="h-5 mr-2">
-        Top Up with PayPal
-      </button>
-    </div>
-
-    <!-- ✅ Embedded JS -->
-    <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        const paypalBtn = document.getElementById("paypalTopUpBtn");
-        if (paypalBtn) {
-          paypalBtn.addEventListener("click", function () {
-            const amount = document.getElementById("top_up_amount").value;
-            if (!amount || amount <= 0) {
-              alert("Please enter a valid amount before continuing.");
-              return;
-            }
-
-            // Redirect to Flask PayPal route
-            window.location.href = `/paypal/create_payment?amount=${amount}`;
-          });
-        }
-      });
-    </script>
   </div>
 </div>
 
-<!-- ✅ NEW PAYMENT METHOD SELECTION MODAL -->
+<!-- 🧭 PAYMENT METHOD SELECTION MODAL -->
 <div id="paymentMethodModal" class="modal hidden">
   <div class="modal-content">
     <span id="closePaymentMethodModalBtn" class="close-button">×</span>
-    <h2 class="text-xl font-bold text-center text-gray-800 mb-4">
-      Choose Payment Method
-    </h2>
+    <h2 class="text-xl font-bold text-center text-gray-800 mb-4">Choose Payment Method</h2>
     <p class="text-center text-gray-600 mb-6 text-sm">
-      Select your preferred method to top up your wallet.
+      Select how you’d like to top up your wallet.
     </p>
 
     <div class="space-y-4">
-      <!-- M-Pesa Button -->
-      <button type="button" id="chooseMpesaBtn"
-              class="w-full bg-green-500 hover:bg-green-600 text-white font-bold 
-                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
-        <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" 
-             alt="M-Pesa" class="h-5 inline-block mr-2">
+      <button id="chooseMpesaBtn"
+              class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
+        <img src="{{ url_for('static', filename='images/mpesa_logo.png') }}" alt="M-Pesa" class="h-5 inline-block mr-2">
         Pay with M-Pesa
       </button>
 
-      <!-- PayPal Button -->
-      <button type="button" id="choosePaypalBtn"
-              class="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold 
-                     py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
-        <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" 
-             alt="PayPal" class="h-5 inline-block mr-2">
+      <button id="choosePaypalBtn"
+              class="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 px-6 rounded-lg text-sm transition duration-300 ease-in-out">
+        <img src="{{ url_for('static', filename='images/paypal_logo.png') }}" alt="PayPal" class="h-5 inline-block mr-2">
         Pay with PayPal
       </button>
     </div>
-
-    <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        const modal = document.getElementById("paymentMethodModal");
-        const closeBtn = document.getElementById("closePaymentMethodModalBtn");
-        const mpesaBtn = document.getElementById("chooseMpesaBtn");
-        const paypalBtn = document.getElementById("choosePaypalBtn");
-
-        // Close selector
-        closeBtn.addEventListener("click", () => modal.classList.add("hidden"));
-
-        // When user selects M-Pesa
-        mpesaBtn.addEventListener("click", () => {
-          modal.classList.add("hidden");
-          document.getElementById("topUpModal").classList.remove("hidden");
-        });
-
-        // When user selects PayPal
-        paypalBtn.addEventListener("click", () => {
-          modal.classList.add("hidden");
-          const amount = prompt("Enter the amount in USD to top up:");
-          if (amount && parseFloat(amount) > 0) {
-            window.location.href = `/paypal/create_payment?amount=${amount}`;
-          } else {
-            alert("Please enter a valid amount.");
-          }
-        });
-      });
-    </script>
   </div>
 </div>
+
+<!-- ⚙️ CONTROLLER SCRIPT -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const paymentSelector = document.getElementById("paymentMethodModal");
+  const topUpModal = document.getElementById("topUpModal");
+  const closeSelector = document.getElementById("closePaymentMethodModalBtn");
+  const mpesaBtn = document.getElementById("chooseMpesaBtn");
+  const paypalBtn = document.getElementById("choosePaypalBtn");
+
+  // Show selector (manual Top Up click)
+  window.openPaymentSelector = function() {
+    paymentSelector.classList.remove("hidden");
+  };
+
+  // Close selector
+  closeSelector.addEventListener("click", () => paymentSelector.classList.add("hidden"));
+
+  // M-Pesa
+  mpesaBtn.addEventListener("click", () => {
+    paymentSelector.classList.add("hidden");
+    topUpModal.classList.remove("hidden");
+  });
+
+  // PayPal
+  paypalBtn.addEventListener("click", () => {
+    paymentSelector.classList.add("hidden");
+    const amount = prompt("Enter the amount in USD to top up:");
+    if (amount && parseFloat(amount) > 0) {
+      window.location.href = `/paypal/create_payment?amount=${amount}`;
+    } else {
+      alert("Please enter a valid amount.");
+    }
+  });
+
+  // 🧠 Intercept auto top-up (insufficient funds)
+  const originalShowTopUp = window.showTopUpModal;
+  window.showTopUpModal = function() {
+    paymentSelector.classList.remove("hidden");
+  };
+});
+</script>
