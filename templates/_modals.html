@@ -138,57 +138,67 @@
 document.addEventListener("DOMContentLoaded", function () {
   const paymentSelector = document.getElementById("paymentMethodModal");
   const topUpModal = document.getElementById("topUpModal");
+  const paypalAmountModal = document.getElementById("paypalAmountModal");
+
   const closeSelector = document.getElementById("closePaymentMethodModalBtn");
+  const closePaypal = document.getElementById("closePaypalAmountModalBtn");
+
   const mpesaBtn = document.getElementById("chooseMpesaBtn");
   const paypalBtn = document.getElementById("choosePaypalBtn");
+  const confirmPaypalBtn = document.getElementById("confirmPaypalAmountBtn");
 
-  // --- Prevent both modals showing at once ---
   function closeAllModals() {
     document.querySelectorAll(".modal").forEach(m => m.classList.add("hidden"));
   }
 
-  // 🧩 Lock M-Pesa modal initially
+  // 🧩 Prevent any modal overlap
   topUpModal.classList.add("hidden");
 
-  // Manual "Top Up" click
+  // Manual “Top Up” button click
   window.openPaymentSelector = function() {
     closeAllModals();
     paymentSelector.classList.remove("hidden");
   };
 
-  // Close selector
+  // --- Close buttons ---
   closeSelector.addEventListener("click", () => paymentSelector.classList.add("hidden"));
+  closePaypal.addEventListener("click", () => paypalAmountModal.classList.add("hidden"));
 
-  // ✅ M-Pesa button — open top-up modal only
+  // --- M-Pesa ---
   mpesaBtn.addEventListener("click", () => {
     closeAllModals();
     topUpModal.classList.remove("hidden");
   });
 
-  // ✅ PayPal button — redirect only
+  // --- PayPal (open custom modal) ---
   paypalBtn.addEventListener("click", () => {
     closeAllModals();
-    const amount = prompt("Enter the amount in USD to top up:");
-    if (amount && parseFloat(amount) > 0) {
-      window.location.href = `/paypal/create_payment?amount=${amount}`;
-    } else {
-      alert("Please enter a valid amount.");
-    }
+    paypalAmountModal.classList.remove("hidden");
   });
 
-  // 🧠 Intercept auto top-up trigger (insufficient funds)
-  const originalShowTopUp = window.showTopUpModal;
+  // --- Confirm PayPal Amount ---
+  confirmPaypalBtn.addEventListener("click", () => {
+    const amount = parseFloat(document.getElementById("paypal_amount_input").value);
+    if (!amount || amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    closeAllModals();
+    window.location.href = `/paypal/create_payment?amount=${amount}`;
+  });
+
+  // 🧠 Intercept auto “insufficient funds” trigger
   window.showTopUpModal = function() {
     closeAllModals();
     paymentSelector.classList.remove("hidden");
   };
 
-  // 🧩 Defensive observer — prevent both showing simultaneously if toggled by scripts
+  // 🧩 Guard: prevent any double modal activation
   const observer = new MutationObserver(() => {
     const topUpVisible = !topUpModal.classList.contains("hidden");
     const selectorVisible = !paymentSelector.classList.contains("hidden");
     if (topUpVisible && selectorVisible) {
-      topUpModal.classList.add("hidden"); // keep only selector visible
+      topUpModal.classList.add("hidden");
     }
   });
   observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["class"] });
